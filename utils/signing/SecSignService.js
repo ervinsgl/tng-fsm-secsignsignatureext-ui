@@ -30,10 +30,22 @@ class SecSignService {
 
         const redirectUrl = returnUrl || 'https://mobileappsignport-webcontainer-test-op.cfapps.eu10.hana.ondemand.com/';
 
+        // Signature position — bottom right corner, signstack covers all pages
+        // sigposbysigner: false = position is fixed, signer cannot move it
+        const sigpos = JSON.stringify([{
+            docname: fileName,
+            top:     750,
+            left:    370,
+            width:   200,
+            height:  50,
+            sigtype: 'manual'
+        }]);
+
         const form = new FormData();
         form.append('filenames',       pdfBuffer, { filename: fileName, contentType: 'application/pdf' });
         form.append('steps',           steps);
-        form.append('sigposbysigner',  'true');
+        form.append('sigpos',          sigpos);
+        form.append('sigposbysigner',  'false');
         form.append('redirecturl',     redirectUrl);
         form.append('redirecttimeout', '3');
 

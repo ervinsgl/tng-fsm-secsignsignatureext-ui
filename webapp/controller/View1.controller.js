@@ -46,6 +46,7 @@ sap.ui.define([
                     source: context.source, user: context.userName,
                     objectType: context.objectType, cloudId: context.cloudId
                 });
+                console.log("[View1] AuthToken:", context.authToken);
 
                 if (context.cloudId && context.cloudId !== "N/A") {
                     await this._loadAttachments(context.cloudId);

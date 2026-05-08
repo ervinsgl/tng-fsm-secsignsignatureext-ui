@@ -24,7 +24,7 @@
     "@sap/ux-ui5-tooling": "1",
     "ui5-task-zipper": "^3.4.x",
     "rimraf": "^5.0.5",
-    "mbt": "^1.2.29"
+    "mbt": "^1.2.49"
   },
   "scripts": {
     "start": "node index.js",
