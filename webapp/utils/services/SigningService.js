@@ -5,7 +5,7 @@
  * Calls the backend signing route which forwards to SAP CI or SecSign.
  *
  * @file webapp/utils/services/SigningService.js
- * @module mobileappsignport/utils/services/SigningService
+ * @module com/tng/fsm/secsignsignatureext/app/utils/services/SigningService
  */
 sap.ui.define([], () => {
     "use strict";

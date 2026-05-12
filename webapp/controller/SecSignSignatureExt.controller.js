@@ -3,13 +3,13 @@ sap.ui.define([
     "sap/ui/model/json/JSONModel",
     "sap/m/MessageBox",
     "sap/m/MessageToast",
-    "mobileappsignport/utils/services/ContextService",
-    "mobileappsignport/utils/services/AttachmentService",
-    "mobileappsignport/utils/services/SigningService"
+    "com/tng/fsm/secsignsignatureext/app/utils/services/ContextService",
+    "com/tng/fsm/secsignsignatureext/app/utils/services/AttachmentService",
+    "com/tng/fsm/secsignsignatureext/app/utils/services/SigningService"
 ], (Controller, JSONModel, MessageBox, MessageToast, ContextService, AttachmentService, SigningService) => {
     "use strict";
 
-    return Controller.extend("mobileappsignport.controller.SecSignSignatureExt", {
+    return Controller.extend("com.tng.fsm.secsignsignatureext.app.controller.SecSignSignatureExt", {
 
         // ── Init ───────────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@
  *   - Merge multiple PDFs via the backend and return a viewer URL
  *
  * @file webapp/utils/services/AttachmentService.js
- * @module mobileappsignport/utils/services/AttachmentService
+ * @module com/tng/fsm/secsignsignatureext/app/utils/services/AttachmentService
  */
 sap.ui.define([], () => {
     "use strict";

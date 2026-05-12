@@ -1,10 +1,10 @@
 sap.ui.define([
     "sap/ui/core/UIComponent",
-    "mobileappsignport/model/models"
+    "com/tng/fsm/secsignsignatureext/app/model/models"
 ], (UIComponent, models) => {
     "use strict";
 
-    return UIComponent.extend("mobileappsignport.Component", {
+    return UIComponent.extend("com.tng.fsm.secsignsignatureext.app.Component", {
         metadata: {
             manifest: "json",
             interfaces: [

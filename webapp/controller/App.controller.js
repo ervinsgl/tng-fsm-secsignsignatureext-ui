@@ -3,7 +3,7 @@ sap.ui.define([
 ], (BaseController) => {
   "use strict";
 
-  return BaseController.extend("mobileappsignport.controller.App", {
+  return BaseController.extend("com.tng.fsm.secsignsignatureext.app.controller.App", {
       onInit() {
       }
   });

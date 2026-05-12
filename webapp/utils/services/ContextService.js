@@ -25,7 +25,7 @@
  *   ContextService.getContext().then(context => { ... })
  *
  * @file webapp/utils/services/ContextService.js
- * @module mobileappsignport/utils/services/ContextService
+ * @module com/tng/fsm/secsignsignatureext/app/utils/services/ContextService
  */
 sap.ui.define([], () => {
     "use strict";

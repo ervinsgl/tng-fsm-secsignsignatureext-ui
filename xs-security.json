@@ -1,5 +1,5 @@
 {
-  "xsappname": "mobileappsignport",
+  "xsappname": "com.tng.fsm.secsignsignatureext.app",
   "tenant-mode": "dedicated",
   "description": "Security profile of called application",
   "scopes": [],
