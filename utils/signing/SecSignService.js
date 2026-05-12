@@ -36,7 +36,12 @@ class SecSignService {
             }]
         }]);
 
-        const redirectUrl = returnUrl || 'https://mobileappsignport-webcontainer-test-op.cfapps.eu10.hana.ondemand.com/';
+        // Redirect back to the app after signing completes in SecSign portal.
+        // returnUrl is always supplied by SigningService (window.location.href); fail loudly if missing.
+        if (!returnUrl) {
+            throw new Error('returnUrl is required for signing');
+        }
+        const redirectUrl = returnUrl;
 
         const form = new FormData();
         form.append('filenames', pdfBuffer, { filename: fileName, contentType: 'application/pdf' });

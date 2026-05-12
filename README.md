@@ -1,4 +1,4 @@
-# mobileappsignport
+# tng-fsm-secsignsignatureext-ui-dev
 
 FSM Document Signing App — SAP Fiori UI5 frontend + Node.js/Express backend deployed on SAP BTP Cloud Foundry.
 
@@ -11,7 +11,7 @@ Enables FSM technicians to view, sign, and merge PDF attachments linked to FSM A
 ## Project Structure
 
 ```
-mobileappsignport/
+tng-fsm-secsignsignatureext-ui-dev/
 │
 ├── index.js                          # Server entry point – middleware, routes, listen
 │
@@ -152,7 +152,7 @@ cf push            # uses manifest.yaml
 
 | | |
 |---|---|
-| **Module Name** | mobileappsignport |
+| **Module Name** | tng-fsm-secsignsignatureext-ui-dev |
 | **Generation Platform** | SAP Business Application Studio |
 | **UI5 Version** | 1.144.1 |
 | **UI5 Theme** | sap_horizon |
