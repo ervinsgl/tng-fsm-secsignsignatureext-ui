@@ -74,17 +74,17 @@
       },
       "routes": [
         {
-          "name": "RouteView1",
+          "name": "RouteSecSignSignatureExt",
           "pattern": ":?query:",
           "target": [
-            "TargetView1"
+            "TargetSecSignSignatureExt"
           ]
         }
       ],
       "targets": {
-        "TargetView1": {
-          "id": "View1",
-          "name": "View1"
+        "TargetSecSignSignatureExt": {
+          "id": "SecSignSignatureExt",
+          "name": "SecSignSignatureExt"
         }
       }
     },

@@ -9,7 +9,7 @@ sap.ui.define([
 ], (Controller, JSONModel, MessageBox, MessageToast, ContextService, AttachmentService, SigningService) => {
     "use strict";
 
-    return Controller.extend("mobileappsignport.controller.View1", {
+    return Controller.extend("mobileappsignport.controller.SecSignSignatureExt", {
 
         // ── Init ───────────────────────────────────────────────────────────
 
@@ -42,22 +42,22 @@ sap.ui.define([
                 oModel.setProperty("/contextLoaded", true);
                 oModel.setProperty("/busy", false);
 
-                console.log("[View1] Context loaded:", {
+                console.log("[SecSignSignatureExt] Context loaded:", {
                     source: context.source, user: context.userName,
                     objectType: context.objectType, cloudId: context.cloudId
                 });
-                console.log("[View1] AuthToken:", context.authToken);
+                console.log("[SecSignSignatureExt] AuthToken:", context.authToken);
 
                 if (context.cloudId && context.cloudId !== "N/A") {
                     await this._loadAttachments(context.cloudId);
                 } else {
-                    console.warn("[View1] No cloudId – skipping attachment load");
+                    console.warn("[SecSignSignatureExt] No cloudId – skipping attachment load");
                 }
 
                 this._checkSigningReturn();
 
             } catch (error) {
-                console.warn("[View1] Context unavailable:", error.message);
+                console.warn("[SecSignSignatureExt] Context unavailable:", error.message);
                 // Still check for pending signing return even if context failed
                 // (session may have expired while user was on SecSign portal)
                 this._checkSigningReturn();
@@ -78,7 +78,7 @@ sap.ui.define([
                 oModel.setProperty("/attachmentsLoaded", true);
 
             } catch (error) {
-                console.error("[View1] Attachment load failed:", error.message);
+                console.error("[SecSignSignatureExt] Attachment load failed:", error.message);
                 oModel.setProperty("/attachmentsLoaded", true);
 
             } finally {
@@ -94,14 +94,14 @@ sap.ui.define([
             const oAttachment = oCtx.getObject();
             const oContext    = oModel.getProperty("/context");
 
-            console.log("[View1] Sign pressed | file:", oAttachment.fileName);
+            console.log("[SecSignSignatureExt] Sign pressed | file:", oAttachment.fileName);
 
             SigningService.triggerSigning(oAttachment, oContext)
                 .then(result => {
-                    console.log("[View1] Signing trigger OK | result:", result);
+                    console.log("[SecSignSignatureExt] Signing trigger OK | result:", result);
 
                     if (result?.workflowstepurl) {
-                        console.log("[View1] Navigating to signing portal:", result.workflowstepurl);
+                        console.log("[SecSignSignatureExt] Navigating to signing portal:", result.workflowstepurl);
                         // Save signing context before navigating — needed to retrieve signed PDF on return
                         const oContext = oModel.getProperty("/context");
                         localStorage.setItem("pendingSigning", JSON.stringify({
@@ -109,10 +109,10 @@ sap.ui.define([
                             attachmentId: oAttachment.id,
                             objectId:     oContext.cloudId
                         }));
-                        console.log("[View1] Saved pendingSigning to localStorage | portfolioId:", result.portfolioid);
+                        console.log("[SecSignSignatureExt] Saved pendingSigning to localStorage | portfolioId:", result.portfolioid);
                         window.location.href = result.workflowstepurl;
                     } else {
-                        console.warn("[View1] No workflowstepurl – marking signed locally");
+                        console.warn("[SecSignSignatureExt] No workflowstepurl – marking signed locally");
                         MessageBox.success("Signed!", {
                             title:   "Document Signed",
                             details: JSON.stringify(result, null, 2),
@@ -121,7 +121,7 @@ sap.ui.define([
                     }
                 })
                 .catch(error => {
-                    console.error("[View1] Signing failed:", error.message);
+                    console.error("[SecSignSignatureExt] Signing failed:", error.message);
                     MessageBox.error("Signing failed", { title: "Error", details: error.message });
                 });
         },
@@ -135,7 +135,7 @@ sap.ui.define([
 
             if (!pending) return;
 
-            console.log("[View1] Returned from signing portal | portfolioId:", pending.portfolioId);
+            console.log("[SecSignSignatureExt] Returned from signing portal | portfolioId:", pending.portfolioId);
 
             // Clear immediately so it doesn't re-trigger on next load
             localStorage.removeItem("pendingSigning");
@@ -148,7 +148,7 @@ sap.ui.define([
                 pending.attachmentId
             )
                 .then(result => {
-                    console.log("[View1] Signed PDF saved | attachmentId:", result.attachmentId);
+                    console.log("[SecSignSignatureExt] Signed PDF saved | attachmentId:", result.attachmentId);
                     MessageToast.show("Document signed and saved successfully", { duration: 5000 });
                     // Reload table so signed status (UDF) is reflected immediately
                     const objectId = pending.objectId
@@ -158,7 +158,7 @@ sap.ui.define([
                     }); else oModel.setProperty("/attachmentsBusy", false);
                 })
                 .catch(error => {
-                    console.error("[View1] Signed PDF upload failed:", error.message);
+                    console.error("[SecSignSignatureExt] Signed PDF upload failed:", error.message);
                     oModel.setProperty("/attachmentsBusy", false);
                     MessageBox.error("Signed PDF could not be saved: " + error.message);
                 });
@@ -176,7 +176,7 @@ sap.ui.define([
         onSelectionChange() {
             const count = this.byId("attachmentsTable").getSelectedItems().length;
             this.getView().getModel("view").setProperty("/selectedCount", count);
-            console.log("[View1] Selection changed | selected:", count);
+            console.log("[SecSignSignatureExt] Selection changed | selected:", count);
         },
 
         onMergePress() {
@@ -187,7 +187,7 @@ sap.ui.define([
             const attachmentIds = selected.map(i => i.getBindingContext("view").getProperty("id"));
             const fileNames     = selected.map(i => i.getBindingContext("view").getProperty("fileName"));
 
-            console.log("[View1] Merge pressed | ids:", attachmentIds, "| files:", fileNames);
+            console.log("[SecSignSignatureExt] Merge pressed | ids:", attachmentIds, "| files:", fileNames);
 
             oModel.setProperty("/pdfUrl", null);
             oModel.setProperty("/pdfFileName", "Merging...");
@@ -198,11 +198,11 @@ sap.ui.define([
                     oModel.setProperty("/pdfUrl", url);
                     oModel.setProperty("/pdfFileName", `Merged (${fileNames.join(" + ")})`);
                     oModel.setProperty("/attachmentsBusy", false);
-                    console.log("[View1] Merge complete | url:", url);
+                    console.log("[SecSignSignatureExt] Merge complete | url:", url);
                     this.byId("pdfPanel").getDomRef()?.scrollIntoView({ behavior: "smooth" });
                 })
                 .catch(error => {
-                    console.error("[View1] Merge failed:", error.message);
+                    console.error("[SecSignSignatureExt] Merge failed:", error.message);
                     oModel.setProperty("/attachmentsBusy", false);
                     oModel.setProperty("/pdfFileName", "");
                     MessageBox.error("Merge failed: " + error.message);
@@ -218,7 +218,7 @@ sap.ui.define([
             oModel.setProperty("/pdfUrl",      AttachmentService.getPdfUrl(oAttachment.id));
             oModel.setProperty("/pdfFileName", oAttachment.fileName);
 
-            console.log("[View1] PDF opened:", oAttachment.fileName);
+            console.log("[SecSignSignatureExt] PDF opened:", oAttachment.fileName);
             this.byId("pdfPanel").getDomRef()?.scrollIntoView({ behavior: "smooth" });
         },
 
