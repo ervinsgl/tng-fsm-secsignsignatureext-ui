@@ -52,52 +52,49 @@
                     busyIndicatorDelay="0"
                     noDataText="No attachments found"
                     selectionChange="onSelectionChange"
+                    updateFinished="onTableUpdateFinished"
                     class="sapUiSmallMarginBottom">
 
                     <headerToolbar>
                         <OverflowToolbar>
                             <Title text="Attachments" level="H5" />
+                            <ObjectStatus
+                                title="{= ${view>/user/firstName} ? (${view>/user/firstName} + ' ' + ${view>/user/lastName}) : ${view>/context/userName} }"
+                                text="{view>/context/userName}"
+                                icon="sap-icon://person-placeholder"
+                                class="sapUiSmallMarginBegin"
+                                visible="{= !!${view>/context/userName} }" />
+                            <ObjectStatus
+                                text="{view>/user/email}"
+                                icon="sap-icon://email"
+                                class="sapUiSmallMarginBegin"
+                                visible="{= !!${view>/user/email} }" />
                             <ToolbarSpacer />
                             <ObjectStatus
                                 text="{= ${view>/attachments}.length + ' item(s)'}"
                                 visible="{view>/attachmentsLoaded}" />
                             <Button
-                                text="{= 'Merge PDFs (' + ${view>/selectedCount} + ')'}"
-                                icon="sap-icon://combine"
+                                text="{= 'Sign Selected (' + ${view>/selectedCount} + ')'}"
+                                icon="sap-icon://signature"
                                 type="Emphasized"
-                                enabled="{= ${view>/selectedCount} >= 2 }"
-                                press="onMergePress"
+                                enabled="{= ${view>/selectedCount} >= 1 }"
+                                press="onSignSelectedPress"
                                 visible="{view>/attachmentsLoaded}" />
                         </OverflowToolbar>
                     </headerToolbar>
 
                     <columns>
-                        <Column width="8%">
+                        <Column width="8rem">
                             <Text text="" />
                         </Column>
-                        <Column width="12%">
+                        <Column>
                             <Text text="File Name" />
                         </Column>
-                        <Column width="8%">
+                        <Column width="6rem">
                             <Text text="Type" />
                         </Column>
-                        <Column width="16%">
-                            <Text text="ID" />
-                        </Column>
-                        <Column width="18%">
-                            <Text text="Content (preview)" />
-                        </Column>
-                        <Column width="10%">
-                            <Text text="Content-Type" />
-                        </Column>
-                        <Column width="10%">
-                            <Text text="User" />
-                        </Column>
-                        <Column width="8%">
-                            <Text text="Language" />
-                        </Column>
-                        <Column width="10%">
-                            <Text text="Auth Token" />
+                        <Column>
+                            <Text text="Description" />
                         </Column>
                     </columns>
 
@@ -114,12 +111,7 @@
                                     press="onFileNamePress"
                                     wrapping="false" />
                                 <Text text="{view>type}" />
-                                <Text text="{view>id}" />
-                                <Text text="{view>content}" wrapping="false" />
-                                <Text text="{view>contentType}" />
-                                <Text text="{view>/context/userName}" />
-                                <Text text="{view>/context/language}" />
-                                <Text text="{view>/context/authToken}" wrapping="false" />
+                                <Text text="{view>description}" />
                             </cells>
                         </ColumnListItem>
                     </items>

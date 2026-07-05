@@ -9,9 +9,11 @@
  *   POST /web-container-access-point  ← FSM Mobile entry point
  *   POST /                            ← Fallback for older FSM versions
  *   GET  /web-container-context       ← Frontend fetches its session context
+ *   GET  /api/user/:name              ← Resolve FSM user profile for the header
  */
 const express = require('express');
 const router  = express.Router();
+const FSMService = require('../utils/fsm/FSMService');
 
 // ── Session storage ────────────────────────────────────────────────────────
 
@@ -86,6 +88,31 @@ router.get('/web-container-context', (req, res) => {
 
     const { _timestamp, ...contextData } = context;
     return res.json(contextData);
+});
+
+/**
+ * GET /api/user/:name
+ * Resolves an FSM user's profile (email, first/last name, roles) by login name.
+ * Used to enrich the header with details for the logged-in user.
+ */
+router.get('/api/user/:name', async (req, res) => {
+    const { name } = req.params;
+
+    if (!name) {
+        return res.status(400).json({ message: 'user name is required' });
+    }
+
+    try {
+        console.log(`[Context] GET user | name: ${name}`);
+        const user = await FSMService.getUserByName(name);
+        if (!user) {
+            return res.status(404).json({ message: `User '${name}' not found` });
+        }
+        return res.json(user);
+    } catch (error) {
+        console.error(`[Context] User lookup error:`, error.message);
+        return res.status(500).json({ message: 'Failed to fetch user', error: error.message });
+    }
 });
 
 module.exports = router;

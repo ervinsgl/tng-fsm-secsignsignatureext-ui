@@ -2,50 +2,26 @@
  * routes/attachments.js
  *
  * All attachment-related API routes.
- * URL paths are kept identical to the original index.js routes
- * so no frontend changes are needed.
  *
  * Routes (mounted at /api):
  *   GET  /api/attachments/:objectId       ← list attachments for an FSM object
  *   GET  /api/attachment-content/:id      ← fetch base64 + contentType
  *   GET  /api/attachment-pdf/:id          ← pipe raw PDF binary (for PDFViewer)
- *   POST /api/attachments/merge           ← merge multiple PDFs
- *   GET  /api/attachments/merged/:uuid    ← serve a previously merged PDF
+ *   POST /api/attachments/finalize-signed ← confirm completion, then update signed docs
  */
-const express         = require('express');
-const { PDFDocument } = require('pdf-lib');
-const FSMService      = require('../utils/fsm/FSMService');
+const express            = require('express');
+const FSMService         = require('../utils/fsm/FSMService');
+const SecSignService     = require('../utils/signing/SecSignService');
+const ZipExtractor       = require('../utils/signing/SignedZipExtractor');
 
 const router = express.Router();
-
-// ── Merged PDF temp cache ──────────────────────────────────────────────────
-
-/**
- * Temporary store for merged PDFs.
- * Key: UUID, Value: { buffer, createdAt }
- * Entries expire after MERGED_TTL_MS. Cleaned every 10 minutes.
- */
-const mergedCache   = {};
-const MERGED_TTL_MS = 10 * 60 * 1000; // 10 minutes
-
-setInterval(() => {
-    const cutoff  = Date.now() - MERGED_TTL_MS;
-    let   removed = 0;
-    Object.keys(mergedCache).forEach(key => {
-        if (mergedCache[key].createdAt < cutoff) {
-            delete mergedCache[key];
-            removed++;
-        }
-    });
-    if (removed > 0) console.log(`[Attachments] Merged cache cleanup: removed ${removed}`);
-}, 10 * 60 * 1000);
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 
 /**
  * GET /api/attachments/:objectId
  * Returns all attachments linked to a given FSM object ID.
- * Response: [{ id, fileName, type }]
+ * Response: [{ id, fileName, type, description, signed }]
  */
 router.get('/attachments/:objectId', async (req, res) => {
     const { objectId } = req.params;
@@ -104,113 +80,69 @@ router.get('/attachment-pdf/:attachmentId', async (req, res) => {
 });
 
 /**
- * POST /api/attachments/merge
- * Fetches multiple PDFs from FSM, merges them with pdf-lib, stores the
- * result in the temp cache and returns a plain HTTP URL for PDFViewer.
+ * POST /api/attachments/finalize-signed
  *
- * Body:    { attachmentIds: ["id1", "id2", ...] }
- * Returns: { url: "/api/attachments/merged/<uuid>" }
+ * Called when the signer returns from the SecSign portal. This route is the
+ * single source of truth for "was it actually signed?":
+ *
+ *   1. Poll SecSign until the portfolio reaches the finished state (3).
+ *      If it never finishes (user went back / declined) → nothing is changed.
+ *   2. Download the signed portfolio (a ZIP for multi-doc; PDF for single).
+ *   3. Split the ZIP and map each signed PDF back to its FSM attachment.
+ *   4. For each matched attachment: overwrite content + set Z_Attachment_PDFSigned.
+ *
+ * Body:    { portfolioId, documents: [{ attachmentId, fileName }] }
+ * Returns: { signed: boolean, signedAttachmentIds: [...], state }
  */
-router.post('/attachments/merge', async (req, res) => {
-    const { attachmentIds } = req.body;
+router.post('/attachments/finalize-signed', async (req, res) => {
+    const { portfolioId, documents } = req.body;
 
-    if (!attachmentIds || !Array.isArray(attachmentIds) || attachmentIds.length < 2) {
-        return res.status(400).json({ message: 'At least 2 attachmentIds required' });
+    if (!portfolioId || !Array.isArray(documents) || documents.length === 0) {
+        return res.status(400).json({ message: 'portfolioId and documents[] are required' });
     }
 
-    console.log(`[Attachments] POST merge | ids: ${attachmentIds.join(', ')}`);
+    console.log(`[Attachments] POST finalize-signed | portfolioId: ${portfolioId} | docs: ${documents.length}`);
 
     try {
-        const buffers = await Promise.all(
-            attachmentIds.map(id => FSMService.getAttachmentBuffer(id))
-        );
-        console.log(`[Attachments] Buffers fetched | sizes: ${buffers.map(b => b.length + ' bytes').join(', ')}`);
+        // 1. Confirm the portfolio actually finished before touching anything.
+        const { signed, status } = await SecSignService.waitForCompletion(portfolioId);
 
-        const merged = await PDFDocument.create();
-        for (let i = 0; i < buffers.length; i++) {
-            const doc   = await PDFDocument.load(buffers[i]);
-            const pages = await merged.copyPages(doc, doc.getPageIndices());
-            pages.forEach(p => merged.addPage(p));
-            console.log(`[Attachments] Added ${attachmentIds[i]} | pages: ${doc.getPageCount()}`);
+        if (!signed) {
+            console.log(`[Attachments] Portfolio ${portfolioId} not signed (state: ${status?.portfoliostate}) — leaving attachments unchanged`);
+            return res.json({
+                signed:              false,
+                signedAttachmentIds: [],
+                state:               status?.portfoliostate ?? null
+            });
         }
 
-        const mergedBuffer = Buffer.from(await merged.save());
-        console.log(`[Attachments] Merge complete | total pages: ${merged.getPageCount()} | size: ${mergedBuffer.length} bytes`);
+        // 2. Download the signed portfolio.
+        const { buffer, contentType } = await SecSignService.downloadSigned(portfolioId);
 
-        const uuid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        mergedCache[uuid] = { buffer: mergedBuffer, createdAt: Date.now() };
+        // 3. Split + map signed PDFs back to attachments.
+        const signedPdfs = ZipExtractor.extractSignedPdfs(buffer, contentType);
+        const mapped     = ZipExtractor.mapToAttachments(signedPdfs, documents);
+        console.log(`[Attachments] Extracted ${signedPdfs.length} signed PDF(s), mapped ${mapped.length} to attachments`);
 
-        const url = `/api/attachments/merged/${uuid}`;
-        console.log(`[Attachments] Cached at: ${url}`);
-        return res.json({ url });
+        // 4. Update each attachment content + mark signed via UDF.
+        const signedAttachmentIds = [];
+        for (const m of mapped) {
+            await FSMService.updateAttachmentContent(m.attachmentId, m.buffer);
+            await FSMService.markAttachmentSigned(m.attachmentId);
+            signedAttachmentIds.push(m.attachmentId);
+            console.log(`[Attachments] Attachment signed + marked | id: ${m.attachmentId} | file: ${m.fileName}`);
+        }
 
-    } catch (error) {
-        console.error(`[Attachments] Merge error:`, error.message);
-        return res.status(500).json({ message: 'Failed to merge PDFs', error: error.message });
-    }
-});
-
-/**
- * GET /api/attachments/merged/:uuid
- * Serves a previously merged PDF from the temp cache.
- */
-router.get('/attachments/merged/:uuid', (req, res) => {
-    const cached = mergedCache[req.params.uuid];
-    if (!cached) {
-        return res.status(404).json({ message: 'Merged PDF not found or expired' });
-    }
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="merged.pdf"');
-    res.send(cached.buffer);
-});
-
-/**
- * POST /api/attachments/upload-signed
- *
- * Downloads the signed PDF from SecSign, uploads it to FSM as a new
- * attachment on the given Activity.
- *
- * Body: { portfolioId, objectId, objectType, originalFileName }
- * Returns: { attachmentId, fileName }
- */
-/**
- * POST /api/attachments/upload-signed
- *
- * Downloads the signed PDF from SecSign and updates the original
- * FSM Attachment with the signed content (PATCH fileContent).
- *
- * Body: { portfolioId, attachmentId }
- */
-router.post('/attachments/upload-signed', async (req, res) => {
-    const { portfolioId, attachmentId } = req.body;
-
-    if (!portfolioId || !attachmentId) {
-        return res.status(400).json({ message: 'portfolioId and attachmentId are required' });
-    }
-
-    console.log(`[Attachments] POST upload-signed | portfolioId: ${portfolioId} | attachmentId: ${attachmentId}`);
-
-    try {
-        const SecSignService = require('../utils/signing/SecSignService');
-
-        // Download signed PDF from SecSign
-        const { buffer } = await SecSignService.downloadSigned(portfolioId);
-        console.log(`[Attachments] Downloaded signed PDF | size: ${buffer.length} bytes`);
-
-        // Update attachment binary with signed PDF
-        await FSMService.updateAttachmentContent(attachmentId, buffer);
-
-        // Mark attachment as signed via UDF
-        await FSMService.markAttachmentSigned(attachmentId);
-
-        console.log(`[Attachments] Attachment signed and marked | attachmentId: ${attachmentId}`);
-        return res.json({ attachmentId });
+        return res.json({
+            signed:              true,
+            signedAttachmentIds,
+            state:               status?.portfoliostate ?? null
+        });
 
     } catch (error) {
-        console.error(`[Attachments] Upload-signed failed:`, error.message);
-        return res.status(500).json({ message: 'Failed to update signed PDF', error: error.message });
+        console.error(`[Attachments] finalize-signed failed:`, error.message);
+        return res.status(500).json({ message: 'Failed to finalize signed documents', error: error.message });
     }
 });
-
 
 module.exports = router;

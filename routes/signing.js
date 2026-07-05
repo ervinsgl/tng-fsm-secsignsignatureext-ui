@@ -1,82 +1,71 @@
 /**
  * routes/signing.js
  *
- * Signing workflow routes.
- * Routing target controlled by SIGNING_TARGET in utils/signing/signing.config.js.
+ * Signing workflow routes. Signing goes directly to SecSign.
  *
  * Routes:
- *   POST /api/signing/trigger  ← called when user presses "Sign PDF"
+ *   POST /api/signing/trigger  ← called when user presses "Sign PDF" / "Sign Selected"
  */
-const express            = require('express');
-const FSMService         = require('../utils/fsm/FSMService');
-const CIService          = require('../utils/signing/CIService');
-const SecSignService     = require('../utils/signing/SecSignService');
-const { SIGNING_TARGET } = require('../utils/signing/signing.config');
+const express        = require('express');
+const FSMService     = require('../utils/fsm/FSMService');
+const SecSignService = require('../utils/signing/SecSignService');
 
 const router = express.Router();
 
 /**
  * POST /api/signing/trigger
  *
- * 1. Fetches PDF binary from FSM
- * 2. Routes to SAP CI, SecSign, or both based on SIGNING_TARGET
- * 3. Returns workflowstepurl for browser navigation to signing portal
+ * 1. Fetches the PDF binary for each requested attachment from FSM
+ * 2. Starts ONE SecSign workflow containing all documents (single step, N sigpos)
+ * 3. Returns workflowstepurl for browser navigation to the signing portal
  *
- * Body: { attachmentId, fileName, objectId, userName, authToken, returnUrl }
+ * Body: { documents: [{ attachmentId, fileName }], userName, returnUrl }
+ * (A single-document sign is just a one-element documents array.)
  */
 router.post('/trigger', async (req, res) => {
-    const { attachmentId, fileName, objectId, userName, authToken, returnUrl } = req.body;
+    const { documents, userName, returnUrl } = req.body;
 
-    console.log(`[Signing] POST trigger | target: ${SIGNING_TARGET} | file: ${fileName} | user: ${userName}`);
+    if (!Array.isArray(documents) || documents.length === 0) {
+        return res.status(400).json({ success: false, message: 'documents[] is required' });
+    }
+    if (!returnUrl) {
+        return res.status(400).json({ success: false, message: 'returnUrl is required' });
+    }
+
+    console.log(`[Signing] POST trigger | docs: ${documents.length} | user: ${userName}`);
 
     try {
-        const pdfBuffer     = await FSMService.getAttachmentBuffer(attachmentId);
-        const signingParams = { pdfBuffer, fileName, userName, authToken, attachmentId, returnUrl };
-        let   result;
+        // Fetch every PDF binary from FSM in parallel.
+        const withBuffers = await Promise.all(
+            documents.map(async doc => ({
+                attachmentId: doc.attachmentId,
+                fileName:     doc.fileName,
+                buffer:       await FSMService.getAttachmentBuffer(doc.attachmentId)
+            }))
+        );
 
-        if (SIGNING_TARGET === 'ci') {
-            result = await CIService.triggerSigning(signingParams);
+        const result = await SecSignService.triggerSigning({
+            documents: withBuffers.map(d => ({ buffer: d.buffer, fileName: d.fileName })),
+            userName,
+            returnUrl
+        });
 
-        } else if (SIGNING_TARGET === 'secsign') {
-            result = await SecSignService.triggerSigning(signingParams);
-
-        } else if (SIGNING_TARGET === 'both') {
-            const [ciResult, secSignResult] = await Promise.all([
-                CIService.triggerSigning(signingParams),
-                SecSignService.triggerSigning(signingParams)
-            ]);
-            result = { ci: ciResult, secSign: secSignResult };
-
-        } else {
-            throw new Error(`Unknown SIGNING_TARGET: '${SIGNING_TARGET}'`);
-        }
-
-        let workflowstepurl = result?.workflowstepurl || result?.data?.workflowstepurl;
-
-        // CI mock fallback — inject mock URL if no workflowstepurl returned
-        if (!workflowstepurl && SIGNING_TARGET === 'ci') {
-            const appBaseUrl   = `${req.protocol}://${req.get('host')}`;
-            const appReturnUrl = returnUrl || `${appBaseUrl}/`;
-            workflowstepurl    = `${appBaseUrl}/mock-signing.html`
-                + `?portfolioId=MOCK-${Date.now()}`
-                + `&attachmentId=${encodeURIComponent(attachmentId)}`
-                + `&fileName=${encodeURIComponent(fileName)}`
-                + `&redirectUrl=${encodeURIComponent(appReturnUrl)}`
-                + `&redirectDeclineUrl=${encodeURIComponent(appReturnUrl)}`;
-        }
+        const workflowstepurl = result?.workflowstepurl;
+        const portfolioid     = result?.portfolioid;
 
         if (!workflowstepurl) {
             console.error(`[Signing] No workflowstepurl in response:`, JSON.stringify(result));
-            return res.status(500).json({ success: false, message: 'No workflowstepurl returned' });
+            return res.status(500).json({ success: false, message: 'No workflowstepurl returned by SecSign' });
         }
 
-        console.log(`[Signing] Trigger OK | portfolioid: ${result?.portfolioid} | url: ${workflowstepurl}`);
+        console.log(`[Signing] Trigger OK | portfolioid: ${portfolioid} | url: ${workflowstepurl}`);
 
         return res.json({
             success:         true,
-            target:          SIGNING_TARGET,
             workflowstepurl: workflowstepurl,
-            portfolioid:     result?.portfolioid || result?.data?.portfolioid || null,
+            portfolioid:     portfolioid || null,
+            // Echo the documents so the client can persist the batch for the return trip.
+            documents:       documents.map(d => ({ attachmentId: d.attachmentId, fileName: d.fileName })),
             data:            result
         });
 

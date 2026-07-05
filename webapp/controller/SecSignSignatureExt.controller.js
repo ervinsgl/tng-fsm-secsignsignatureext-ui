@@ -5,9 +5,12 @@ sap.ui.define([
     "sap/m/MessageToast",
     "com/tng/fsm/secsignsignatureext/app/utils/services/ContextService",
     "com/tng/fsm/secsignsignatureext/app/utils/services/AttachmentService",
-    "com/tng/fsm/secsignsignatureext/app/utils/services/SigningService"
-], (Controller, JSONModel, MessageBox, MessageToast, ContextService, AttachmentService, SigningService) => {
+    "com/tng/fsm/secsignsignatureext/app/utils/services/SigningService",
+    "com/tng/fsm/secsignsignatureext/app/utils/services/UserService"
+], (Controller, JSONModel, MessageBox, MessageToast, ContextService, AttachmentService, SigningService, UserService) => {
     "use strict";
+
+    const PENDING_KEY = "pendingSigning";
 
     return Controller.extend("com.tng.fsm.secsignsignatureext.app.controller.SecSignSignatureExt", {
 
@@ -19,6 +22,7 @@ sap.ui.define([
                 contextLoaded:     false,
                 showError:         false,
                 context:           {},
+                user:              null,
                 attachments:       [],
                 attachmentsBusy:   false,
                 attachmentsLoaded: false,
@@ -42,28 +46,56 @@ sap.ui.define([
                 oModel.setProperty("/contextLoaded", true);
                 oModel.setProperty("/busy", false);
 
-                console.log("[SecSignSignatureExt] Context loaded:", {
+                console.log("[View1] Context loaded:", {
                     source: context.source, user: context.userName,
                     objectType: context.objectType, cloudId: context.cloudId
                 });
-                console.log("[SecSignSignatureExt] AuthToken:", context.authToken);
+
+                // Enrich the header with the logged-in user's profile (non-blocking).
+                this._loadUser(context.userName);
 
                 if (context.cloudId && context.cloudId !== "N/A") {
                     await this._loadAttachments(context.cloudId);
                 } else {
-                    console.warn("[SecSignSignatureExt] No cloudId – skipping attachment load");
+                    console.warn("[View1] No cloudId – skipping attachment load");
                 }
 
                 this._checkSigningReturn();
 
             } catch (error) {
-                console.warn("[SecSignSignatureExt] Context unavailable:", error.message);
-                // Still check for pending signing return even if context failed
-                // (session may have expired while user was on SecSign portal)
+                console.warn("[View1] Context unavailable:", error.message);
+                // Still check for a pending signing return even if context failed
+                // (session may have expired while user was on the SecSign portal).
                 this._checkSigningReturn();
                 oModel.setProperty("/showError", true);
                 oModel.setProperty("/busy", false);
             }
+        },
+
+        // ── User ───────────────────────────────────────────────────────────
+
+        /**
+         * Resolve the logged-in user's profile and store it on the model for
+         * the header. Non-blocking: a lookup failure just leaves the header
+         * showing the plain user name.
+         * @param {string} userName
+         * @private
+         */
+        _loadUser(userName) {
+            if (!userName || userName === "N/A") return;
+
+            const oModel = this.getView().getModel("view");
+
+            UserService.getUserByName(userName)
+                .then(user => {
+                    if (user) {
+                        oModel.setProperty("/user", user);
+                        console.log("[View1] User loaded | email:", user.email);
+                    }
+                })
+                .catch(error => {
+                    console.warn("[View1] User lookup failed:", error.message);
+                });
         },
 
         // ── Attachments ────────────────────────────────────────────────────
@@ -78,7 +110,7 @@ sap.ui.define([
                 oModel.setProperty("/attachmentsLoaded", true);
 
             } catch (error) {
-                console.error("[SecSignSignatureExt] Attachment load failed:", error.message);
+                console.error("[View1] Attachment load failed:", error.message);
                 oModel.setProperty("/attachmentsLoaded", true);
 
             } finally {
@@ -86,42 +118,73 @@ sap.ui.define([
             }
         },
 
-        // ── Sign ───────────────────────────────────────────────────────────
+        // ── Sign (single row) ──────────────────────────────────────────────
 
         onSignPress(oEvent) {
             const oCtx        = oEvent.getSource().getBindingContext("view");
-            const oModel      = oCtx.getModel();
             const oAttachment = oCtx.getObject();
-            const oContext    = oModel.getProperty("/context");
 
-            console.log("[SecSignSignatureExt] Sign pressed | file:", oAttachment.fileName);
+            console.log("[View1] Sign pressed | file:", oAttachment.fileName);
+            this._startSigning([{ id: oAttachment.id, fileName: oAttachment.fileName }]);
+        },
 
-            SigningService.triggerSigning(oAttachment, oContext)
+        // ── Sign (selected rows) ───────────────────────────────────────────
+
+        onSignSelectedPress() {
+            const oTable   = this.byId("attachmentsTable");
+            const selected = oTable.getSelectedItems();
+
+            const documents = selected
+                .map(i => i.getBindingContext("view").getObject())
+                .filter(a => !a.signed) // don't re-sign already-signed docs
+                .map(a => ({ id: a.id, fileName: a.fileName }));
+
+            if (documents.length === 0) {
+                MessageToast.show("Select one or more unsigned PDFs first");
+                return;
+            }
+
+            console.log("[View1] Sign selected pressed | count:", documents.length);
+            this._startSigning(documents);
+        },
+
+        /**
+         * Shared entry point for single and multi-document signing.
+         * Starts one SecSign workflow for all documents, persists the batch,
+         * then navigates to the signing portal.
+         * @param {Array} documents - [{ id, fileName }]
+         * @private
+         */
+        _startSigning(documents) {
+            const oModel   = this.getView().getModel("view");
+            const oContext = oModel.getProperty("/context");
+
+            oModel.setProperty("/attachmentsBusy", true);
+
+            SigningService.triggerSigning(documents, oContext)
                 .then(result => {
-                    console.log("[SecSignSignatureExt] Signing trigger OK | result:", result);
+                    console.log("[View1] Signing trigger OK | portfolioId:", result.portfolioid);
 
-                    if (result?.workflowstepurl) {
-                        console.log("[SecSignSignatureExt] Navigating to signing portal:", result.workflowstepurl);
-                        // Save signing context before navigating — needed to retrieve signed PDF on return
-                        const oContext = oModel.getProperty("/context");
-                        localStorage.setItem("pendingSigning", JSON.stringify({
-                            portfolioId:  result.portfolioid,
-                            attachmentId: oAttachment.id,
-                            objectId:     oContext.cloudId
-                        }));
-                        console.log("[SecSignSignatureExt] Saved pendingSigning to localStorage | portfolioId:", result.portfolioid);
-                        window.location.href = result.workflowstepurl;
-                    } else {
-                        console.warn("[SecSignSignatureExt] No workflowstepurl – marking signed locally");
-                        MessageBox.success("Signed!", {
-                            title:   "Document Signed",
-                            details: JSON.stringify(result, null, 2),
-                            onClose: () => oModel.setProperty(oCtx.getPath() + "/signed", true)
-                        });
+                    if (!result?.workflowstepurl) {
+                        oModel.setProperty("/attachmentsBusy", false);
+                        MessageBox.error("Signing could not be started (no portal URL returned).");
+                        return;
                     }
+
+                    // Persist the batch so the return handler can finalize + match.
+                    localStorage.setItem(PENDING_KEY, JSON.stringify({
+                        portfolioId: result.portfolioid,
+                        objectId:    oContext.cloudId,
+                        documents:   result.documents // [{ attachmentId, fileName }]
+                    }));
+                    console.log("[View1] Saved pending batch | portfolioId:", result.portfolioid,
+                        "| docs:", result.documents?.length);
+
+                    window.location.href = result.workflowstepurl;
                 })
                 .catch(error => {
-                    console.error("[SecSignSignatureExt] Signing failed:", error.message);
+                    console.error("[View1] Signing failed:", error.message);
+                    oModel.setProperty("/attachmentsBusy", false);
                     MessageBox.error("Signing failed", { title: "Error", details: error.message });
                 });
         },
@@ -130,83 +193,101 @@ sap.ui.define([
 
         _checkSigningReturn() {
             const params     = new URLSearchParams(window.location.search);
-            const pendingRaw = localStorage.getItem("pendingSigning");
+            const pendingRaw = localStorage.getItem(PENDING_KEY);
             const pending    = pendingRaw ? JSON.parse(pendingRaw) : null;
+
+            // Always clean the URL back to just the session param.
+            const cleanUrl = () => {
+                const sessionKey = params.get("session");
+                const url = window.location.pathname
+                    + (sessionKey ? `?session=${encodeURIComponent(sessionKey)}` : "")
+                    + window.location.hash;
+                window.history.replaceState({}, document.title, url);
+            };
 
             if (!pending) return;
 
-            console.log("[SecSignSignatureExt] Returned from signing portal | portfolioId:", pending.portfolioId);
+            console.log("[View1] Returned from signing portal | portfolioId:", pending.portfolioId);
 
-            // Clear immediately so it doesn't re-trigger on next load
-            localStorage.removeItem("pendingSigning");
+            // Clear immediately so it doesn't re-trigger on the next load.
+            localStorage.removeItem(PENDING_KEY);
 
             const oModel = this.getView().getModel("view");
             oModel.setProperty("/attachmentsBusy", true);
 
-            AttachmentService.uploadSignedPdf(
-                pending.portfolioId,
-                pending.attachmentId
-            )
+            AttachmentService.finalizeSigned(pending.portfolioId, pending.documents)
                 .then(result => {
-                    console.log("[SecSignSignatureExt] Signed PDF saved | attachmentId:", result.attachmentId);
-                    MessageToast.show("Document signed and saved successfully", { duration: 5000 });
-                    // Reload table so signed status (UDF) is reflected immediately
-                    const objectId = pending.objectId
-                        || this.getView().getModel("view").getProperty("/context/cloudId");
-                    if (objectId) this._loadAttachments(objectId).finally(() => {
+                    if (result.signed && result.signedAttachmentIds.length > 0) {
+                        console.log("[View1] Signed + saved | ids:", result.signedAttachmentIds);
+                        MessageToast.show(
+                            result.signedAttachmentIds.length === 1
+                                ? "Document signed and saved"
+                                : `${result.signedAttachmentIds.length} documents signed and saved`,
+                            { duration: 5000 }
+                        );
+                    } else {
+                        // Not signed — user likely went back or declined. Nothing changed.
+                        console.log("[View1] Not signed | state:", result.state);
+                        MessageToast.show("Signing was not completed — nothing was changed", { duration: 6000 });
+                    }
+
+                    // Reload so the table reflects the real UDF state from FSM.
+                    const objectId = pending.objectId || oModel.getProperty("/context/cloudId");
+                    if (objectId) {
+                        this._loadAttachments(objectId).finally(() => oModel.setProperty("/attachmentsBusy", false));
+                    } else {
                         oModel.setProperty("/attachmentsBusy", false);
-                    }); else oModel.setProperty("/attachmentsBusy", false);
+                    }
                 })
                 .catch(error => {
-                    console.error("[SecSignSignatureExt] Signed PDF upload failed:", error.message);
+                    console.error("[View1] Finalize failed:", error.message);
                     oModel.setProperty("/attachmentsBusy", false);
-                    MessageBox.error("Signed PDF could not be saved: " + error.message);
-                });
-
-            // Clean URL — keep only session param
-            const sessionKey = params.get("session");
-            const cleanUrl   = window.location.pathname
-                + (sessionKey ? `?session=${encodeURIComponent(sessionKey)}` : "")
-                + window.location.hash;
-            window.history.replaceState({}, document.title, cleanUrl);
+                    MessageBox.error("Could not finalize signing: " + error.message);
+                })
+                .finally(cleanUrl);
         },
 
-        // ── Merge ──────────────────────────────────────────────────────────
+        // ── Selection ──────────────────────────────────────────────────────
 
         onSelectionChange() {
             const count = this.byId("attachmentsTable").getSelectedItems().length;
             this.getView().getModel("view").setProperty("/selectedCount", count);
-            console.log("[SecSignSignatureExt] Selection changed | selected:", count);
+            console.log("[View1] Selection changed | selected:", count);
         },
 
-        onMergePress() {
-            const oTable   = this.byId("attachmentsTable");
-            const oModel   = this.getView().getModel("view");
-            const selected = oTable.getSelectedItems();
+        /**
+         * Fires whenever the table finishes (re)rendering its rows.
+         * Hides the MultiSelect checkbox on already-signed rows so signed
+         * attachments cannot be selected for signing.
+         * (SAPUI5 has no declarative per-row checkbox toggle — this is the
+         * documented programmatic approach.)
+         */
+        onTableUpdateFinished(oEvent) {
+            const oTable = oEvent.getSource();
 
-            const attachmentIds = selected.map(i => i.getBindingContext("view").getProperty("id"));
-            const fileNames     = selected.map(i => i.getBindingContext("view").getProperty("fileName"));
+            oTable.getItems().forEach(oItem => {
+                const oCtx = oItem.getBindingContext("view");
+                if (!oCtx) return;
 
-            console.log("[SecSignSignatureExt] Merge pressed | ids:", attachmentIds, "| files:", fileNames);
+                const bSigned = oCtx.getProperty("signed") === true;
+                const oCheckbox = oItem.getMultiSelectControl
+                    ? oItem.getMultiSelectControl(true)
+                    : null;
 
-            oModel.setProperty("/pdfUrl", null);
-            oModel.setProperty("/pdfFileName", "Merging...");
-            oModel.setProperty("/attachmentsBusy", true);
+                if (oCheckbox) {
+                    oCheckbox.setVisible(!bSigned);
+                    // Defensively drop any lingering selection on a signed row.
+                    if (bSigned && oItem.getSelected()) {
+                        oItem.setSelected(false);
+                    }
+                }
+            });
 
-            AttachmentService.mergePdfs(attachmentIds)
-                .then(url => {
-                    oModel.setProperty("/pdfUrl", url);
-                    oModel.setProperty("/pdfFileName", `Merged (${fileNames.join(" + ")})`);
-                    oModel.setProperty("/attachmentsBusy", false);
-                    console.log("[SecSignSignatureExt] Merge complete | url:", url);
-                    this.byId("pdfPanel").getDomRef()?.scrollIntoView({ behavior: "smooth" });
-                })
-                .catch(error => {
-                    console.error("[SecSignSignatureExt] Merge failed:", error.message);
-                    oModel.setProperty("/attachmentsBusy", false);
-                    oModel.setProperty("/pdfFileName", "");
-                    MessageBox.error("Merge failed: " + error.message);
-                });
+            // Selection may have changed if a signed row was deselected above.
+            this.getView().getModel("view").setProperty(
+                "/selectedCount",
+                oTable.getSelectedItems().length
+            );
         },
 
         // ── PDF Viewer ─────────────────────────────────────────────────────
@@ -218,7 +299,7 @@ sap.ui.define([
             oModel.setProperty("/pdfUrl",      AttachmentService.getPdfUrl(oAttachment.id));
             oModel.setProperty("/pdfFileName", oAttachment.fileName);
 
-            console.log("[SecSignSignatureExt] PDF opened:", oAttachment.fileName);
+            console.log("[View1] PDF opened:", oAttachment.fileName);
             this.byId("pdfPanel").getDomRef()?.scrollIntoView({ behavior: "smooth" });
         },
 

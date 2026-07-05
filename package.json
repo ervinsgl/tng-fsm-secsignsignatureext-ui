@@ -14,17 +14,18 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "adm-zip": "^0.5.18",
     "axios": "^1.7.9",
     "express": "^4.21.2",
     "form-data": "^4.0.0",
     "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
-    "@ui5/cli": "^4.0.33",
     "@sap/ux-ui5-tooling": "1",
-    "ui5-task-zipper": "^3.4.x",
+    "@ui5/cli": "^4.0.33",
+    "mbt": "^1.2.49",
     "rimraf": "^5.0.5",
-    "mbt": "^1.2.49"
+    "ui5-task-zipper": "^3.4.x"
   },
   "scripts": {
     "start": "node index.js",
@@ -34,7 +35,7 @@
     "build:cf": "ui5 build preload --clean-dest --config ui5-deploy.yaml --include-task=generateCachebusterInfo",
     "build:mta": "rimraf resources mta_archives && mbt build",
     "deploy": "fiori cfDeploy",
-    "undeploy": "cf delete tng-fsm-secsignsignatureext-ui -f && cf delete-service fsm-secsignsignatureext-destination-dev -f"
+    "undeploy": "cf delete tng-fsm-secsignsignatureext-ui-sandbox -f && cf delete-service fsm-secsignsignatureext-destination -f"
   },
   "sapuxLayer": "CUSTOMER_BASE"
 }

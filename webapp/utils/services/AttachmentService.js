@@ -19,7 +19,7 @@ sap.ui.define([], () => {
          * Load all attachments for an FSM object and enrich each with PDF content.
          * @param {string} objectId - FSM cloudId from context
          * @returns {Promise<Array>} Enriched attachment objects:
-         *   { id, fileName, type, content, contentFull, contentType, signed }
+         *   { id, fileName, type, description, content, contentFull, contentType, signed }
          */
         async loadAttachments(objectId) {
             console.log("[AttachmentService] Loading attachments | objectId:", objectId);
@@ -49,56 +49,35 @@ sap.ui.define([], () => {
         },
 
         /**
-         * Merge multiple PDFs via the backend.
-         * Returns a plain HTTP URL pointing to the cached merged PDF.
-         * @param {string[]} attachmentIds
-         * @returns {Promise<string>} URL e.g. "/api/attachments/merged/<uuid>"
+         * Finalize signing after returning from the SecSign portal.
+         * The backend confirms the portfolio actually finished before it
+         * downloads, updates and marks any attachment as signed.
+         *
+         * @param {string} portfolioId - from the trigger response
+         * @param {Array}  documents   - [{ attachmentId, fileName }] the signed batch
+         * @returns {Promise<{ signed: boolean, signedAttachmentIds: string[], state: number }>}
          */
-        async mergePdfs(attachmentIds) {
-            console.log("[AttachmentService] Merging PDFs | ids:", attachmentIds);
+        async finalizeSigned(portfolioId, documents) {
+            console.log("[AttachmentService] finalizeSigned | portfolioId:", portfolioId, "| docs:", documents.length);
 
-            const response = await fetch("/api/attachments/merge", {
+            const response = await fetch("/api/attachments/finalize-signed", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ attachmentIds })
+                body:    JSON.stringify({ portfolioId, documents })
             });
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
-                throw new Error(err.message || `Merge failed: HTTP ${response.status}`);
+                throw new Error(err.message || `Finalize failed: HTTP ${response.status}`);
             }
 
             const result = await response.json();
-            console.log("[AttachmentService] Merge complete | url:", result.url);
-            return result.url;
-        },
-
-        /**
-         * Download signed PDF from SecSign and update the original FSM attachment.
-         * @param {string} portfolioId  - from Step 1 SecSign response
-         * @param {string} attachmentId - FSM attachment ID to update with signed content
-         * @returns {Promise<{ attachmentId }>}
-         */
-        async uploadSignedPdf(portfolioId, attachmentId) {
-            console.log("[AttachmentService] uploadSignedPdf | portfolioId:", portfolioId, "| attachmentId:", attachmentId);
-
-            const response = await fetch("/api/attachments/upload-signed", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ portfolioId, attachmentId })
-            });
-
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
-                throw new Error(err.message || `Upload failed: HTTP ${response.status}`);
-            }
-
-            const result = await response.json();
-            console.log("[AttachmentService] Attachment updated with signed content | attachmentId:", result.attachmentId);
+            console.log("[AttachmentService] finalizeSigned result | signed:", result.signed,
+                "| count:", result.signedAttachmentIds?.length);
             return result;
         },
 
-                // ── Private ───────────────────────────────────────────────────────
+        // ── Private ───────────────────────────────────────────────────────
 
         /**
          * Fetch PDF binary content for a single attachment.
@@ -125,7 +104,7 @@ sap.ui.define([], () => {
                     content:     preview,
                     contentFull: result.base64,
                     contentType: result.contentType || "application/pdf"
-                    // signed preserved from attachment (set by FSMService UDF check)
+                    // signed + description preserved from attachment (set by FSMService)
                 };
 
             } catch (error) {

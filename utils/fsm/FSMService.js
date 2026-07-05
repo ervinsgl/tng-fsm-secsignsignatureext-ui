@@ -109,6 +109,54 @@ class FSMService {
     }
 
     // =========================================================================
+    // USER
+    // =========================================================================
+
+    /**
+     * Look up an FSM user by their login name.
+     * GET /api/user/v1/users/?name=<name>&account=<account>
+     *
+     * Uses the same bearer token + X-Client-ID / X-Client-Version headers as
+     * the data API, but a different base path (/api/user/v1).
+     *
+     * @param {string} name - FSM user login name (e.g. "EGLEIZDS")
+     * @returns {Promise<Object|null>} { email, firstName, lastName, name, active, roles } or null
+     */
+    async getUserByName(name) {
+        try {
+            const { dest, token } = await this._auth();
+            const account = dest.account || this.config.account;
+
+            const response = await axios.get(
+                `${dest.URL}/api/user/v1/users/`,
+                {
+                    params:  { name, account },
+                    headers: this._headers(dest, token)
+                }
+            );
+
+            const user = response.data?.content?.[0] || null;
+            if (!user) {
+                console.warn(`[FSMService] User not found | name: ${name}`);
+                return null;
+            }
+
+            console.log(`[FSMService] User resolved | name: ${name} | email: ${user.email}`);
+            return {
+                name:      user.name,
+                email:     user.email     || '',
+                firstName: user.firstName || '',
+                lastName:  user.lastName  || '',
+                active:    user.active,
+                roles:     user.roles     || []
+            };
+        } catch (error) {
+            console.error(`[FSMService] User lookup error for ${name}:`, error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    // =========================================================================
     // ATTACHMENTS
     // =========================================================================
 
@@ -150,6 +198,7 @@ class FSMService {
                     id:       w.id       || 'N/A',
                     fileName: w.fileName || 'N/A',
                     type:     w.type     || 'N/A',
+                    description: w.description  || '',
                     signed
                 };
             }));

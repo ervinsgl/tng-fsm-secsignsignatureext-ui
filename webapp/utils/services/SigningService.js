@@ -13,25 +13,24 @@ sap.ui.define([], () => {
     return {
 
         /**
-         * Trigger the signing workflow for an attachment.
-         * Backend fetches the PDF binary from FSM and forwards to the configured target.
+         * Trigger the signing workflow for one or more attachments.
+         * Backend fetches each PDF binary from FSM and starts a single SecSign
+         * workflow containing all documents (signer signs them all in one pass).
          *
-         * @param {Object} attachment       - Attachment row from model { id, fileName }
-         * @param {Object} context          - FSM context { cloudId, userName, authToken }
-         * @returns {Promise<Object>}       - { success, workflowstepurl, portfolioid, data }
+         * @param {Array}  documents - [{ id, fileName }] attachments to sign
+         * @param {Object} context   - FSM context { cloudId, userName, authToken }
+         * @returns {Promise<Object>} { success, workflowstepurl, portfolioid, documents }
          */
-        triggerSigning(attachment, context) {
+        triggerSigning(documents, context) {
             const payload = {
-                attachmentId: attachment.id,
-                fileName:     attachment.fileName,
-                objectId:     context.cloudId,
-                userName:     context.userName,
-                authToken:    context.authToken,
+                documents: documents.map(d => ({ attachmentId: d.id, fileName: d.fileName })),
+                userName:  context.userName,
+                authToken: context.authToken,
                 // Full current URL (including ?session=) so the portal redirects back correctly
-                returnUrl:    window.location.href
+                returnUrl: window.location.href
             };
 
-            console.log("[SigningService] Triggering signing new | payload:", payload);
+            console.log("[SigningService] Triggering signing | docs:", payload.documents.length, "| user:", payload.userName);
 
             return fetch("/api/signing/trigger", {
                 method:  "POST",
@@ -48,7 +47,7 @@ sap.ui.define([], () => {
                 return response.json();
             })
             .then(result => {
-                console.log("[SigningService] Success | result:", result);
+                console.log("[SigningService] Success | portfolioid:", result.portfolioid);
                 return result;
             })
             .catch(error => {
