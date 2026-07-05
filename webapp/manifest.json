@@ -1,7 +1,7 @@
 {
   "_version": "1.81.0",
   "sap.app": {
-    "id": "com.tng.fsm.secsignsignatureext.app",
+    "id": "com.tns.fsm.secsignsignatureext.app",
     "type": "application",
     "i18n": "i18n/i18n.properties",
     "applicationVersion": {
@@ -49,7 +49,7 @@
       "i18n": {
         "type": "sap.ui.model.resource.ResourceModel",
         "settings": {
-          "bundleName": "com.tng.fsm.secsignsignatureext.app.i18n.i18n"
+          "bundleName": "com.tns.fsm.secsignsignatureext.app.i18n.i18n"
         }
       }
     },
@@ -68,9 +68,9 @@
         "transition": "slide",
         "type": "View",
         "viewType": "XML",
-        "path": "com.tng.fsm.secsignsignatureext.app.view",
+        "path": "com.tns.fsm.secsignsignatureext.app.view",
         "async": true,
-        "viewPath": "com.tng.fsm.secsignsignatureext.app.view"
+        "viewPath": "com.tns.fsm.secsignsignatureext.app.view"
       },
       "routes": [
         {
@@ -89,7 +89,7 @@
       }
     },
     "rootView": {
-      "viewName": "com.tng.fsm.secsignsignatureext.app.view.App",
+      "viewName": "com.tns.fsm.secsignsignatureext.app.view.App",
       "type": "XML",
       "id": "App",
       "async": true
@@ -97,6 +97,6 @@
   },
   "sap.cloud": {
     "public": true,
-    "service": "com.tng.fsm.secsignsignatureext.app"
+    "service": "com.tns.fsm.secsignsignatureext.app"
   }
 }

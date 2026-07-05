@@ -5,7 +5,7 @@
  * Resolves profile details (email, first/last name) for a given user name.
  *
  * @file webapp/utils/services/UserService.js
- * @module com/tng/fsm/secsignsignatureext/app/utils/services/UserService
+ * @module com/tns/fsm/secsignsignatureext/app/utils/services/UserService
  */
 sap.ui.define([], () => {
     "use strict";

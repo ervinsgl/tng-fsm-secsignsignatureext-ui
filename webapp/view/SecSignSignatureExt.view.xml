@@ -1,5 +1,5 @@
 <mvc:View
-    controllerName="com.tng.fsm.secsignsignatureext.app.controller.SecSignSignatureExt"
+    controllerName="com.tns.fsm.secsignsignatureext.app.controller.SecSignSignatureExt"
     xmlns:mvc="sap.ui.core.mvc"
     xmlns="sap.m"
     xmlns:layout="sap.ui.layout"

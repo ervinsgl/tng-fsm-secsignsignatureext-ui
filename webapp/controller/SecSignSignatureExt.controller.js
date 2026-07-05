@@ -3,16 +3,16 @@ sap.ui.define([
     "sap/ui/model/json/JSONModel",
     "sap/m/MessageBox",
     "sap/m/MessageToast",
-    "com/tng/fsm/secsignsignatureext/app/utils/services/ContextService",
-    "com/tng/fsm/secsignsignatureext/app/utils/services/AttachmentService",
-    "com/tng/fsm/secsignsignatureext/app/utils/services/SigningService",
-    "com/tng/fsm/secsignsignatureext/app/utils/services/UserService"
+    "com/tns/fsm/secsignsignatureext/app/utils/services/ContextService",
+    "com/tns/fsm/secsignsignatureext/app/utils/services/AttachmentService",
+    "com/tns/fsm/secsignsignatureext/app/utils/services/SigningService",
+    "com/tns/fsm/secsignsignatureext/app/utils/services/UserService"
 ], (Controller, JSONModel, MessageBox, MessageToast, ContextService, AttachmentService, SigningService, UserService) => {
     "use strict";
 
     const PENDING_KEY = "pendingSigning";
 
-    return Controller.extend("com.tng.fsm.secsignsignatureext.app.controller.SecSignSignatureExt", {
+    return Controller.extend("com.tns.fsm.secsignsignatureext.app.controller.SecSignSignatureExt", {
 
         // ── Init ───────────────────────────────────────────────────────────
 

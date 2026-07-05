@@ -1,5 +1,5 @@
 applications:
-  - name: tng-fsm-secsignsignatureext-ui-sandbox
+  - name: tns-fsm-secsignsignatureext-ui-sandbox
     memory: 512M
     disk_quota: 512M
     instances: 1
@@ -8,6 +8,6 @@ applications:
     command: npm start
     path: .
     routes:
-      - route: tng-fsm-secsignsignatureext-ui-sandbox-fsm-dev-op.cfapps.eu10-004.hana.ondemand.com
+      - route: tns-fsm-secsignsignatureext-ui-sandbox-fsm-dev-op.cfapps.eu10-004.hana.ondemand.com
     services:
       - fsm-secsignsignatureext-destination

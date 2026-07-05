@@ -1,5 +1,5 @@
 {
-  "xsappname": "com.tng.fsm.secsignsignatureext.app",
+  "xsappname": "com.tns.fsm.secsignsignatureext.app",
   "tenant-mode": "dedicated",
   "description": "Security profile of called application",
   "scopes": [],
