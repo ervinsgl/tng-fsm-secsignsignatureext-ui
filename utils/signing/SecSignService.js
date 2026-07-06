@@ -24,6 +24,11 @@ const {
     REDIRECT_UX
 } = require('./signing.config');
 
+// ── Destination ────────────────────────────────────────────────────────────
+// BTP destination name for the SecSign Signature Portal (BasicAuthentication).
+// Change here if the destination is renamed in the BTP cockpit.
+const SECSIGN_DESTINATION = 'SECSIGN_CONNECT';
+
 class SecSignService {
 
     /**
@@ -190,7 +195,7 @@ class SecSignService {
     // ── Private ───────────────────────────────────────────────────────────────
 
     async _getDestConfig() {
-        const destination = await DestinationService.getDestination('SECSIGN_CONNECT');
+        const destination = await DestinationService.getDestination(SECSIGN_DESTINATION);
         return destination.destinationConfiguration;
     }
 

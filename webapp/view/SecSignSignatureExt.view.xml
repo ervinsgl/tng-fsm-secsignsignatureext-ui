@@ -16,10 +16,10 @@
         <customHeader>
             <OverflowToolbar design="Info">
                 <core:Icon src="sap-icon://connected" class="sapUiTinyMarginEnd" />
-                <Title text="FSM Web Container" level="H4" />
+                <Title text="{i18n>headerTitle}" level="H4" />
                 <ToolbarSpacer />
                 <ObjectStatus
-                    text="{= ${view>/context/source} === 'mobile' ? 'Mobile App' : 'Web UI' }"
+                    text="{= ${view>/context/source} === 'mobile' ? ${i18n>sourceMobile} : ${i18n>sourceWebUi} }"
                     state="Success"
                     visible="{view>/contextLoaded}" />
                 <ObjectStatus
@@ -35,8 +35,8 @@
             <IllustratedMessage
                 visible="{view>/showError}"
                 illustrationType="sapIllus-NoMail"
-                title="Open from FSM"
-                description="Open this app from FSM Mobile (Web Container) or FSM Web UI (Shell Extension)." />
+                title="{i18n>openFromFsmTitle}"
+                description="{i18n>openFromFsmDescription}" />
 
             <layout:VerticalLayout
                 visible="{view>/contextLoaded}"
@@ -50,14 +50,14 @@
                     items="{view>/attachments}"
                     busy="{view>/attachmentsBusy}"
                     busyIndicatorDelay="0"
-                    noDataText="No attachments found"
+                    noDataText="{i18n>noAttachmentsText}"
                     selectionChange="onSelectionChange"
                     updateFinished="onTableUpdateFinished"
                     class="sapUiSmallMarginBottom">
 
                     <headerToolbar>
                         <OverflowToolbar>
-                            <Title text="Attachments" level="H5" />
+                            <Title text="{i18n>attachmentsTitle}" level="H5" />
                             <ObjectStatus
                                 title="{= ${view>/user/firstName} ? (${view>/user/firstName} + ' ' + ${view>/user/lastName}) : ${view>/context/userName} }"
                                 text="{view>/context/userName}"
@@ -71,10 +71,10 @@
                                 visible="{= !!${view>/user/email} }" />
                             <ToolbarSpacer />
                             <ObjectStatus
-                                text="{= ${view>/attachments}.length + ' item(s)'}"
+                                text="{ parts: [{path: 'view>/attachments'}, {path: 'i18n>itemCount'}], formatter: '.formatItemCount' }"
                                 visible="{view>/attachmentsLoaded}" />
                             <Button
-                                text="{= 'Sign Selected (' + ${view>/selectedCount} + ')'}"
+                                text="{ parts: [{path: 'view>/selectedCount'}, {path: 'i18n>signSelected'}], formatter: '.formatSignSelected' }"
                                 icon="sap-icon://signature"
                                 type="Emphasized"
                                 enabled="{= ${view>/selectedCount} >= 1 }"
@@ -88,13 +88,13 @@
                             <Text text="" />
                         </Column>
                         <Column>
-                            <Text text="File Name" />
+                            <Text text="{i18n>colFileName}" />
                         </Column>
                         <Column width="6rem">
-                            <Text text="Type" />
+                            <Text text="{i18n>colType}" />
                         </Column>
                         <Column>
-                            <Text text="Description" />
+                            <Text text="{i18n>colDescription}" />
                         </Column>
                     </columns>
 
@@ -102,7 +102,7 @@
                         <ColumnListItem>
                             <cells>
                                 <Button
-                                    text="{= ${view>signed} ? 'Signed!' : 'Sign PDF' }"
+                                    text="{= ${view>signed} ? ${i18n>signedLabel} : ${i18n>signPdf} }"
                                     type="{= ${view>signed} ? 'Success' : 'Emphasized' }"
                                     enabled="{= !${view>signed} }"
                                     press="onSignPress" />
@@ -129,7 +129,7 @@
                             <Title text="{view>/pdfFileName}" level="H5" />
                             <ToolbarSpacer />
                             <Button
-                                text="Close"
+                                text="{i18n>close}"
                                 icon="sap-icon://decline"
                                 press="onClosePdf" />
                         </OverflowToolbar>

@@ -3,7 +3,14 @@
   "sap.app": {
     "id": "com.tns.fsm.secsignsignatureext.app",
     "type": "application",
-    "i18n": "i18n/i18n.properties",
+    "i18n": {
+      "bundleUrl": "i18n/i18n.properties",
+      "supportedLocales": [
+        "",
+        "de"
+      ],
+      "fallbackLocale": ""
+    },
     "applicationVersion": {
       "version": "0.0.1"
     },
@@ -49,7 +56,12 @@
       "i18n": {
         "type": "sap.ui.model.resource.ResourceModel",
         "settings": {
-          "bundleName": "com.tns.fsm.secsignsignatureext.app.i18n.i18n"
+          "bundleName": "com.tns.fsm.secsignsignatureext.app.i18n.i18n",
+          "supportedLocales": [
+            "",
+            "de"
+          ],
+          "fallbackLocale": ""
         }
       }
     },

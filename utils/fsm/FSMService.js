@@ -18,6 +18,12 @@ const axios              = require('axios');
 const DestinationService = require('./DestinationService');
 const TokenCache         = require('./TokenCache');
 
+// ── Destination ────────────────────────────────────────────────────────────
+// BTP destination name for the FSM OAuth connection.
+// Change here if the destination is renamed in the BTP cockpit.
+const FSM_DESTINATION = 'FSM_OAUTH_CONNECT';
+
+
 class FSMService {
 
     constructor() {
@@ -298,7 +304,7 @@ class FSMService {
     // =========================================================================
 
     async _auth() {
-        const destination = await DestinationService.getDestination('FSM_OAUTH_CONNECT');
+        const destination = await DestinationService.getDestination(FSM_DESTINATION);
         const token       = await TokenCache.getToken(destination);
         return { dest: destination.destinationConfiguration, token };
     }

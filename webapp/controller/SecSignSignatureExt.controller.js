@@ -18,20 +18,52 @@ sap.ui.define([
 
         onInit() {
             this.getView().setModel(new JSONModel({
-                busy:              true,
-                contextLoaded:     false,
-                showError:         false,
-                context:           {},
-                user:              null,
-                attachments:       [],
-                attachmentsBusy:   false,
+                busy: true,
+                contextLoaded: false,
+                showError: false,
+                context: {},
+                user: null,
+                attachments: [],
+                attachmentsBusy: false,
                 attachmentsLoaded: false,
-                selectedCount:     0,
-                pdfUrl:            null,
-                pdfFileName:       ""
+                selectedCount: 0,
+                pdfUrl: null,
+                pdfFileName: ""
             }), "view");
 
             this._loadContext();
+        },
+
+        // ── i18n helpers ───────────────────────────────────────────────────
+
+        /**
+         * Convenience accessor for the i18n resource bundle.
+         * Reads from the owner component (where the manifest declares the model)
+         * so it is available even before view-level model propagation completes.
+         * @returns {sap.base.i18n.ResourceBundle}
+         * @private
+         */
+        _i18n() {
+            return this.getOwnerComponent().getModel("i18n").getResourceBundle();
+        },
+
+        /**
+         * Formatter: "N item(s)" for the attachment count badge.
+         * @param {Array} attachments
+         * @returns {string}
+         */
+        formatItemCount(attachments) {
+            const count = Array.isArray(attachments) ? attachments.length : 0;
+            return this._i18n().getText("itemCount", [count]);
+        },
+
+        /**
+         * Formatter: "Sign Selected (N)" for the batch sign button.
+         * @param {number} count
+         * @returns {string}
+         */
+        formatSignSelected(count) {
+            return this._i18n().getText("signSelected", [count || 0]);
         },
 
         // ── Context ────────────────────────────────────────────────────────
@@ -41,6 +73,9 @@ sap.ui.define([
 
             try {
                 const context = await ContextService.getContext();
+
+                // Apply FSM locale before translatable content renders.
+                this._setAppLanguage(context.language || context.locale);
 
                 oModel.setProperty("/context", context);
                 oModel.setProperty("/contextLoaded", true);
@@ -69,6 +104,26 @@ sap.ui.define([
                 this._checkSigningReturn();
                 oModel.setProperty("/showError", true);
                 oModel.setProperty("/busy", false);
+            }
+        },
+
+        /**
+         * Set application language based on FSM context.
+         * Normalizes 'de-DE' -> 'de' and only switches if different.
+         * Must run before the views/tables with translatable text render.
+         * @param {string} language - Language code (e.g., 'de', 'en')
+         * @private
+         */
+        _setAppLanguage(language) {
+            if (!language || language === "N/A") return;
+
+            const langCode = language.toLowerCase().split("-")[0].split("_")[0];
+            const currentLang = sap.ui.getCore().getConfiguration().getLanguage();
+            const currentLangCode = currentLang.toLowerCase().split("-")[0].split("_")[0];
+
+            if (langCode !== currentLangCode) {
+                console.log(`[View1] Setting language to '${langCode}' (from FSM context)`);
+                sap.ui.getCore().getConfiguration().setLanguage(langCode);
             }
         },
 
@@ -121,7 +176,7 @@ sap.ui.define([
         // ── Sign (single row) ──────────────────────────────────────────────
 
         onSignPress(oEvent) {
-            const oCtx        = oEvent.getSource().getBindingContext("view");
+            const oCtx = oEvent.getSource().getBindingContext("view");
             const oAttachment = oCtx.getObject();
 
             console.log("[View1] Sign pressed | file:", oAttachment.fileName);
@@ -131,7 +186,7 @@ sap.ui.define([
         // ── Sign (selected rows) ───────────────────────────────────────────
 
         onSignSelectedPress() {
-            const oTable   = this.byId("attachmentsTable");
+            const oTable = this.byId("attachmentsTable");
             const selected = oTable.getSelectedItems();
 
             const documents = selected
@@ -140,7 +195,7 @@ sap.ui.define([
                 .map(a => ({ id: a.id, fileName: a.fileName }));
 
             if (documents.length === 0) {
-                MessageToast.show("Select one or more unsigned PDFs first");
+                MessageToast.show(this._i18n().getText("selectUnsignedFirst"));
                 return;
             }
 
@@ -156,7 +211,7 @@ sap.ui.define([
          * @private
          */
         _startSigning(documents) {
-            const oModel   = this.getView().getModel("view");
+            const oModel = this.getView().getModel("view");
             const oContext = oModel.getProperty("/context");
 
             oModel.setProperty("/attachmentsBusy", true);
@@ -167,15 +222,15 @@ sap.ui.define([
 
                     if (!result?.workflowstepurl) {
                         oModel.setProperty("/attachmentsBusy", false);
-                        MessageBox.error("Signing could not be started (no portal URL returned).");
+                        MessageBox.error(this._i18n().getText("signingNoUrl"));
                         return;
                     }
 
                     // Persist the batch so the return handler can finalize + match.
                     localStorage.setItem(PENDING_KEY, JSON.stringify({
                         portfolioId: result.portfolioid,
-                        objectId:    oContext.cloudId,
-                        documents:   result.documents // [{ attachmentId, fileName }]
+                        objectId: oContext.cloudId,
+                        documents: result.documents // [{ attachmentId, fileName }]
                     }));
                     console.log("[View1] Saved pending batch | portfolioId:", result.portfolioid,
                         "| docs:", result.documents?.length);
@@ -185,16 +240,19 @@ sap.ui.define([
                 .catch(error => {
                     console.error("[View1] Signing failed:", error.message);
                     oModel.setProperty("/attachmentsBusy", false);
-                    MessageBox.error("Signing failed", { title: "Error", details: error.message });
+                    MessageBox.error(this._i18n().getText("signingFailed"), {
+                        title: this._i18n().getText("signingFailedTitle"),
+                        details: error.message
+                    });
                 });
         },
 
         // ── Return from signing portal ─────────────────────────────────────
 
         _checkSigningReturn() {
-            const params     = new URLSearchParams(window.location.search);
+            const params = new URLSearchParams(window.location.search);
             const pendingRaw = localStorage.getItem(PENDING_KEY);
-            const pending    = pendingRaw ? JSON.parse(pendingRaw) : null;
+            const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
 
             // Always clean the URL back to just the session param.
             const cleanUrl = () => {
@@ -219,16 +277,17 @@ sap.ui.define([
                 .then(result => {
                     if (result.signed && result.signedAttachmentIds.length > 0) {
                         console.log("[View1] Signed + saved | ids:", result.signedAttachmentIds);
+                        const count = result.signedAttachmentIds.length;
                         MessageToast.show(
-                            result.signedAttachmentIds.length === 1
-                                ? "Document signed and saved"
-                                : `${result.signedAttachmentIds.length} documents signed and saved`,
+                            count === 1
+                                ? this._i18n().getText("docSignedSaved")
+                                : this._i18n().getText("docsSignedSaved", [count]),
                             { duration: 5000 }
                         );
                     } else {
                         // Not signed — user likely went back or declined. Nothing changed.
                         console.log("[View1] Not signed | state:", result.state);
-                        MessageToast.show("Signing was not completed — nothing was changed", { duration: 6000 });
+                        MessageToast.show(this._i18n().getText("signingNotCompleted"), { duration: 6000 });
                     }
 
                     // Reload so the table reflects the real UDF state from FSM.
@@ -242,7 +301,7 @@ sap.ui.define([
                 .catch(error => {
                     console.error("[View1] Finalize failed:", error.message);
                     oModel.setProperty("/attachmentsBusy", false);
-                    MessageBox.error("Could not finalize signing: " + error.message);
+                    MessageBox.error(this._i18n().getText("finalizeFailed", [error.message]));
                 })
                 .finally(cleanUrl);
         },
@@ -294,9 +353,9 @@ sap.ui.define([
 
         onFileNamePress(oEvent) {
             const oAttachment = oEvent.getSource().getBindingContext("view").getObject();
-            const oModel      = this.getView().getModel("view");
+            const oModel = this.getView().getModel("view");
 
-            oModel.setProperty("/pdfUrl",      AttachmentService.getPdfUrl(oAttachment.id));
+            oModel.setProperty("/pdfUrl", AttachmentService.getPdfUrl(oAttachment.id));
             oModel.setProperty("/pdfFileName", oAttachment.fileName);
 
             console.log("[View1] PDF opened:", oAttachment.fileName);
