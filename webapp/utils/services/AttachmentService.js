@@ -5,7 +5,6 @@
  *   - Load attachment list for an FSM object
  *   - Enrich each attachment with PDF content (preview + full base64)
  *   - Get the backend URL for serving a single PDF (for PDFViewer)
- *   - Merge multiple PDFs via the backend and return a viewer URL
  *
  * @file webapp/utils/services/AttachmentService.js
  * @module com/tns/fsm/secsignsignatureext/app/utils/services/AttachmentService

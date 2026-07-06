@@ -2,7 +2,7 @@
  * SigningService.js
  *
  * Frontend service for document signing operations.
- * Calls the backend signing route which forwards to SAP CI or SecSign.
+ * Calls the backend signing route which forwards to SecSign.
  *
  * @file webapp/utils/services/SigningService.js
  * @module com/tns/fsm/secsignsignatureext/app/utils/services/SigningService

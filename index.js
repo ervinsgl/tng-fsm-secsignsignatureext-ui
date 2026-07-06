@@ -55,5 +55,4 @@ app.listen(PORT, () => {
     console.log(`[Server] FSM Signing app running on port ${PORT}`);
     console.log(`[Server] Web container entry:  POST /web-container-access-point`);
     console.log(`[Server] Inbound auth:          Auth Key + session cookie (mobile)`);
-    console.log(`[Server] Signing target:        ${require('./utils/signing/signing.config').SIGNING_TARGET}`);
 });

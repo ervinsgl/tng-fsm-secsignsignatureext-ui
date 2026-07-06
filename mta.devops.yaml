@@ -1,14 +1,16 @@
 # ============================================================
-#  SANDBOX / LOCAL ONLY — DO NOT COMMIT TO THE DEVOPS REPO
-#  Personal test instance. The official DEV app is owned by
-#  the pipeline and uses the unsuffixed name/route.
-#  NEVER copy the "-sandbox" name or route into the repo's
-#  manifest.yaml / mta.yaml — it would hijack the DEV route.
-#  Repo files must keep: app/ID/route = unsuffixed
+#  DEVOPS REPO FILE — committed, pipeline-owned.
+#  This is the official transport descriptor for DEV/QA/PROD.
+#  The environment is determined by WHICH subaccount the mtar
+#  is deployed into (separate spaces/domains per env), so the
+#  app name carries NO -dev/-qa/-prod suffix and the route is
+#  auto-generated (default-route: true).
+#  Do NOT add a -sandbox name or a pinned route here — that is
+#  the local-only manifest.yaml's job and would hijack the route.
 # ============================================================
 
 _schema-version: "3.2"
-ID: tns.fsm.secsignsignatureext.ui.sandbox
+ID: tns.fsm.secsignsignatureext.ui
 version: 1.0.0
 description: SecSignSignatureExt — FSM PDF document signing extension via SecSign Signature Portal (side-by-side, Node.js/Express + SAPUI5)
 
@@ -16,7 +18,7 @@ parameters:
   enable-parallel-deployments: true
 
 modules:
-  - name: tns-fsm-secsignsignatureext-ui-sandbox
+  - name: tns-fsm-secsignsignatureext-ui
     type: nodejs
     path: .
     parameters:
@@ -24,10 +26,7 @@ modules:
       command: npm start
       memory: 512M
       disk-quota: 512M
-      # Route pinned to the existing sandbox host so FSM does not need repointing.
-      # For QA/Prod, use the DevOps mta.yaml (default-route) instead.
-      routes:
-        - route: tns-fsm-secsignsignatureext-ui-sandbox-fsm-dev-op.cfapps.eu10-004.hana.ondemand.com
+      default-route: true        # CF auto-generates the host per subaccount
     requires:
       - name: fsm-secsignsignatureext-destination
     build-parameters:
@@ -43,7 +42,8 @@ modules:
         - "*.mtaext"
 
 resources:
-  # Reuse the EXISTING destination instance (not managed/created by this MTA).
+  # Reuse the EXISTING destination instance (created/configured per subaccount,
+  # not managed by this MTA). Same unsuffixed name in every environment.
   - name: fsm-secsignsignatureext-destination
     type: org.cloudfoundry.existing-service
     parameters:

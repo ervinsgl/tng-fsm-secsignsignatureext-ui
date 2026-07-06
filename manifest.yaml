@@ -1,3 +1,12 @@
+# ============================================================
+#  SANDBOX / LOCAL ONLY — DO NOT COMMIT TO THE DEVOPS REPO
+#  Personal test instance. The official DEV app is owned by
+#  the pipeline and uses the unsuffixed name/route.
+#  NEVER copy the "-sandbox" name or route into the repo's
+#  manifest.yaml / mta.yaml — it would hijack the DEV route.
+#  Repo files must keep: app/ID/route = unsuffixed
+# ============================================================
+
 applications:
   - name: tns-fsm-secsignsignatureext-ui-sandbox
     memory: 512M

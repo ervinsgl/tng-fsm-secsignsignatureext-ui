@@ -64,10 +64,6 @@ function handleMobilePost(body, res) {
 
     console.log(`[Context] Web container opened | user: ${userName} | objectType: ${body?.objectType} | session: ${key}`);
 
-    // Diagnostic: confirm whether FSM Mobile sends a language/locale field so
-    // the frontend can switch UI language. Remove once verified.
-    console.log(`[Context] Mobile context keys: ${Object.keys(body).join(', ')} | language: ${body?.language} | locale: ${body?.locale}`);
-
     // ── Tier 3: issue the session cookie ────────────────────────────────────
     const token = SessionStore.issue(key);
     res.cookie(requireSession.COOKIE_NAME, token, requireSession.cookieOptions(SessionStore.ttlMs));

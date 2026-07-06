@@ -1,0 +1,21 @@
+# ============================================================
+#  DEVOPS REPO FILE — committed, unsuffixed (DEV app).
+#  Used for a direct `cf push` of the DEV app in the DevOps
+#  subaccount. Transport to QA/PROD does NOT use this file —
+#  it uses mta.yaml (mtar) instead.
+#  No -sandbox / -dev suffix; route is auto-generated so it
+#  cannot collide with an existing pinned host.
+# ============================================================
+
+applications:
+  - name: tns-fsm-secsignsignatureext-ui
+    memory: 512M
+    disk_quota: 512M
+    instances: 1
+    buildpacks:
+      - nodejs_buildpack
+    command: npm start
+    path: .
+    random-route: true          # CF auto-generates the host (no pinned route)
+    services:
+      - fsm-secsignsignatureext-destination

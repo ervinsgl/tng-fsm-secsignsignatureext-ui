@@ -1,0 +1,7 @@
+{
+    "name": "Signature Portal",
+    "provider": "TUEV NORD",
+    "description": "Provides PDF Signature",
+    "version": "1.0.0",
+    "icon": "sap-icon://signature"
+}
