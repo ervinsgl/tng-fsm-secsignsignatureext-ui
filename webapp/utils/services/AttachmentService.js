@@ -56,6 +56,10 @@ sap.ui.define([], () => {
          * @param {string} portfolioId - from the trigger response
          * @param {Array}  documents   - [{ attachmentId, fileName }] the signed batch
          * @returns {Promise<{ signed: boolean, signedAttachmentIds: string[], state: number }>}
+         * @throws {Error} On failure. If the session expired (HTTP 401), the
+         *   thrown error carries `error.sessionExpired === true` so the caller
+         *   can prompt the technician to re-open from FSM Mobile rather than
+         *   showing a generic failure.
          */
         async finalizeSigned(portfolioId, documents) {
             console.log("[AttachmentService] finalizeSigned | portfolioId:", portfolioId, "| docs:", documents.length);
@@ -67,6 +71,16 @@ sap.ui.define([], () => {
             });
 
             if (!response.ok) {
+                // Session expired while the technician was on the SecSign portal
+                // (e.g. server restart wiped the in-memory session). The signature
+                // itself already succeeded on SecSign — only the FSM write-back is
+                // blocked. Surface this distinctly so the UI can guide re-launch.
+                if (response.status === 401) {
+                    const expiredErr = new Error("Session expired during signing");
+                    expiredErr.sessionExpired = true;
+                    throw expiredErr;
+                }
+
                 const err = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
                 throw new Error(err.message || `Finalize failed: HTTP ${response.status}`);
             }

@@ -5,15 +5,23 @@
  * Handles FSM Mobile POST context, stores it per-user session,
  * and serves it back to the frontend on request.
  *
+ * Inbound auth (mobile):
+ *   - Entry POST validates the FSM Authentication Key (Tier 1).
+ *   - On success, an HttpOnly session cookie is issued (Tier 3).
+ *   - /web-container-context requires that cookie.
+ * See SECURITY.md.
+ *
  * Routes:
  *   POST /web-container-access-point  ← FSM Mobile entry point
  *   POST /                            ← Fallback for older FSM versions
- *   GET  /web-container-context       ← Frontend fetches its session context
- *   GET  /api/user/:name              ← Resolve FSM user profile for the header
+ *   GET  /web-container-context       ← Frontend fetches its session context (protected)
+ *   GET  /api/user/:name              ← Resolve FSM user profile for the header (protected)
  */
 const express = require('express');
 const router  = express.Router();
-const FSMService = require('../utils/fsm/FSMService');
+const FSMService     = require('../utils/fsm/FSMService');
+const SessionStore   = require('../utils/auth/SessionStore');
+const requireSession = require('../utils/auth/requireSession');
 
 // ── Session storage ────────────────────────────────────────────────────────
 
@@ -42,6 +50,12 @@ setInterval(() => {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function handleMobilePost(body, res) {
+    // ── Tier 1: validate the FSM Authentication Key ─────────────────────────
+    if (!SessionStore.isValidAuthKey(body?.authenticationKey)) {
+        console.warn(`[Context] WC-ACCESS-POINT: rejected POST — authenticationKey invalid or missing | user: ${body?.userName || 'unknown'}`);
+        return res.status(401).send('Unauthorized');
+    }
+
     const userName = body?.userName || 'unknown';
     const cloudId  = body?.cloudId  || 'unknown';
     const key      = `${userName}-${cloudId}`;
@@ -53,6 +67,11 @@ function handleMobilePost(body, res) {
     // Diagnostic: confirm whether FSM Mobile sends a language/locale field so
     // the frontend can switch UI language. Remove once verified.
     console.log(`[Context] Mobile context keys: ${Object.keys(body).join(', ')} | language: ${body?.language} | locale: ${body?.locale}`);
+
+    // ── Tier 3: issue the session cookie ────────────────────────────────────
+    const token = SessionStore.issue(key);
+    res.cookie(requireSession.COOKIE_NAME, token, requireSession.cookieOptions(SessionStore.ttlMs));
+    console.log(`[Context] WC-ACCESS-POINT: context stored, session issued | session: ${key}`);
 
     const host = res.req.protocol + '://' + res.req.get('host');
     res.redirect(`${host}/?session=${encodeURIComponent(key)}`);
@@ -77,8 +96,9 @@ router.post('/', (req, res) => {
 /**
  * GET /web-container-context?session=<key>
  * Frontend calls this on load to retrieve its stored context.
+ * Protected: requires the session cookie issued on entry.
  */
-router.get('/web-container-context', (req, res) => {
+router.get('/web-container-context', requireSession, (req, res) => {
     const key = req.query.session;
 
     if (!key) {
@@ -98,8 +118,9 @@ router.get('/web-container-context', (req, res) => {
  * GET /api/user/:name
  * Resolves an FSM user's profile (email, first/last name, roles) by login name.
  * Used to enrich the header with details for the logged-in user.
+ * Protected: requires the session cookie.
  */
-router.get('/api/user/:name', async (req, res) => {
+router.get('/api/user/:name', requireSession, async (req, res) => {
     const { name } = req.params;
 
     if (!name) {

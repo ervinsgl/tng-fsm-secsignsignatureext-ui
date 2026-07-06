@@ -18,17 +18,17 @@ sap.ui.define([
 
         onInit() {
             this.getView().setModel(new JSONModel({
-                busy: true,
-                contextLoaded: false,
-                showError: false,
-                context: {},
-                user: null,
-                attachments: [],
-                attachmentsBusy: false,
+                busy:              true,
+                contextLoaded:     false,
+                showError:         false,
+                context:           {},
+                user:              null,
+                attachments:       [],
+                attachmentsBusy:   false,
                 attachmentsLoaded: false,
-                selectedCount: 0,
-                pdfUrl: null,
-                pdfFileName: ""
+                selectedCount:     0,
+                pdfUrl:            null,
+                pdfFileName:       ""
             }), "view");
 
             this._loadContext();
@@ -49,6 +49,7 @@ sap.ui.define([
 
         /**
          * Formatter: "N item(s)" for the attachment count badge.
+         * The i18n binding part forces re-evaluation on language change.
          * @param {Array} attachments
          * @returns {string}
          */
@@ -59,6 +60,7 @@ sap.ui.define([
 
         /**
          * Formatter: "Sign Selected (N)" for the batch sign button.
+         * The i18n binding part forces re-evaluation on language change.
          * @param {number} count
          * @returns {string}
          */
@@ -176,7 +178,7 @@ sap.ui.define([
         // ── Sign (single row) ──────────────────────────────────────────────
 
         onSignPress(oEvent) {
-            const oCtx = oEvent.getSource().getBindingContext("view");
+            const oCtx        = oEvent.getSource().getBindingContext("view");
             const oAttachment = oCtx.getObject();
 
             console.log("[View1] Sign pressed | file:", oAttachment.fileName);
@@ -186,7 +188,7 @@ sap.ui.define([
         // ── Sign (selected rows) ───────────────────────────────────────────
 
         onSignSelectedPress() {
-            const oTable = this.byId("attachmentsTable");
+            const oTable   = this.byId("attachmentsTable");
             const selected = oTable.getSelectedItems();
 
             const documents = selected
@@ -211,7 +213,7 @@ sap.ui.define([
          * @private
          */
         _startSigning(documents) {
-            const oModel = this.getView().getModel("view");
+            const oModel   = this.getView().getModel("view");
             const oContext = oModel.getProperty("/context");
 
             oModel.setProperty("/attachmentsBusy", true);
@@ -229,8 +231,8 @@ sap.ui.define([
                     // Persist the batch so the return handler can finalize + match.
                     localStorage.setItem(PENDING_KEY, JSON.stringify({
                         portfolioId: result.portfolioid,
-                        objectId: oContext.cloudId,
-                        documents: result.documents // [{ attachmentId, fileName }]
+                        objectId:    oContext.cloudId,
+                        documents:   result.documents // [{ attachmentId, fileName }]
                     }));
                     console.log("[View1] Saved pending batch | portfolioId:", result.portfolioid,
                         "| docs:", result.documents?.length);
@@ -250,9 +252,9 @@ sap.ui.define([
         // ── Return from signing portal ─────────────────────────────────────
 
         _checkSigningReturn() {
-            const params = new URLSearchParams(window.location.search);
+            const params     = new URLSearchParams(window.location.search);
             const pendingRaw = localStorage.getItem(PENDING_KEY);
-            const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
+            const pending    = pendingRaw ? JSON.parse(pendingRaw) : null;
 
             // Always clean the URL back to just the session param.
             const cleanUrl = () => {
@@ -299,8 +301,20 @@ sap.ui.define([
                     }
                 })
                 .catch(error => {
-                    console.error("[View1] Finalize failed:", error.message);
                     oModel.setProperty("/attachmentsBusy", false);
+
+                    if (error.sessionExpired) {
+                        // Signature succeeded on SecSign, but our session lapsed
+                        // before the FSM write-back. Guide the technician to
+                        // re-launch so the signed state can be confirmed.
+                        console.warn("[View1] Finalize blocked — session expired");
+                        MessageBox.warning(this._i18n().getText("sessionExpiredResign"), {
+                            title: this._i18n().getText("sessionExpiredTitle")
+                        });
+                        return;
+                    }
+
+                    console.error("[View1] Finalize failed:", error.message);
                     MessageBox.error(this._i18n().getText("finalizeFailed", [error.message]));
                 })
                 .finally(cleanUrl);
@@ -309,7 +323,18 @@ sap.ui.define([
         // ── Selection ──────────────────────────────────────────────────────
 
         onSelectionChange() {
-            const count = this.byId("attachmentsTable").getSelectedItems().length;
+            const oTable = this.byId("attachmentsTable");
+
+            // "Select all" selects every row regardless of checkbox visibility.
+            // Strip signed rows back out so only unsigned PDFs stay selected.
+            oTable.getSelectedItems().forEach(oItem => {
+                const oCtx = oItem.getBindingContext("view");
+                if (oCtx && oCtx.getProperty("signed") === true) {
+                    oTable.setSelectedItem(oItem, false);
+                }
+            });
+
+            const count = oTable.getSelectedItems().length;
             this.getView().getModel("view").setProperty("/selectedCount", count);
             console.log("[View1] Selection changed | selected:", count);
         },
@@ -353,9 +378,9 @@ sap.ui.define([
 
         onFileNamePress(oEvent) {
             const oAttachment = oEvent.getSource().getBindingContext("view").getObject();
-            const oModel = this.getView().getModel("view");
+            const oModel      = this.getView().getModel("view");
 
-            oModel.setProperty("/pdfUrl", AttachmentService.getPdfUrl(oAttachment.id));
+            oModel.setProperty("/pdfUrl",      AttachmentService.getPdfUrl(oAttachment.id));
             oModel.setProperty("/pdfFileName", oAttachment.fileName);
 
             console.log("[View1] PDF opened:", oAttachment.fileName);
