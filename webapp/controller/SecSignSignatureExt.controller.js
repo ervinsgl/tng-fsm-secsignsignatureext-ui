@@ -215,10 +215,17 @@ sap.ui.define([
         _startSigning(documents) {
             const oModel   = this.getView().getModel("view");
             const oContext = oModel.getProperty("/context");
+            const oUser    = oModel.getProperty("/user");
+
+            const signerEmail = oUser && oUser.email;
+            if (!signerEmail) {
+                MessageBox.error(this._i18n().getText("signerEmailMissing"));
+                return;
+            }
 
             oModel.setProperty("/attachmentsBusy", true);
 
-            SigningService.triggerSigning(documents, oContext)
+            SigningService.triggerSigning(documents, oContext, signerEmail)
                 .then(result => {
                     console.log("[View1] Signing trigger OK | portfolioId:", result.portfolioid);
 

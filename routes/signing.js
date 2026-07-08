@@ -19,11 +19,11 @@ const router = express.Router();
  * 2. Starts ONE SecSign workflow containing all documents (single step, N sigpos)
  * 3. Returns workflowstepurl for browser navigation to the signing portal
  *
- * Body: { documents: [{ attachmentId, fileName }], userName, returnUrl }
+ * Body: { documents: [{ attachmentId, fileName }], signerEmail, returnUrl }
  * (A single-document sign is just a one-element documents array.)
  */
 router.post('/trigger', async (req, res) => {
-    const { documents, userName, returnUrl } = req.body;
+    const { documents, signerEmail, returnUrl } = req.body;
 
     if (!Array.isArray(documents) || documents.length === 0) {
         return res.status(400).json({ success: false, message: 'documents[] is required' });
@@ -31,8 +31,11 @@ router.post('/trigger', async (req, res) => {
     if (!returnUrl) {
         return res.status(400).json({ success: false, message: 'returnUrl is required' });
     }
+    if (!signerEmail) {
+        return res.status(400).json({ success: false, message: 'signerEmail is required' });
+    }
 
-    console.log(`[Signing] POST trigger | docs: ${documents.length} | user: ${userName}`);
+    console.log(`[Signing] POST trigger | docs: ${documents.length} | signer: ${signerEmail}`);
 
     try {
         // Fetch every PDF binary from FSM in parallel.
@@ -46,7 +49,7 @@ router.post('/trigger', async (req, res) => {
 
         const result = await SecSignService.triggerSigning({
             documents: withBuffers.map(d => ({ buffer: d.buffer, fileName: d.fileName })),
-            userName,
+            signerEmail,
             returnUrl
         });
 

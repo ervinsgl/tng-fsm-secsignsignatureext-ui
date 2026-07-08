@@ -35,27 +35,34 @@ class SecSignService {
      * Trigger a signing workflow on SecSign for one or more documents.
      *
      * @param {Object}   params
-     * @param {Array}    params.documents - [{ buffer, fileName }] one entry per PDF
-     * @param {string}   params.userName  - SecSign signer name
-     * @param {string}   params.returnUrl - URL to return to after signing
+     * @param {Array}    params.documents   - [{ buffer, fileName }] one entry per PDF
+     * @param {string}   params.signerEmail  - SecSign signer (user email address)
+     * @param {string}   params.returnUrl    - URL to return to after signing
      * @returns {Promise<Object>} SecSign response incl. portfolioid + workflowstepurl
      */
-    async triggerSigning({ documents, userName, returnUrl }) {
+    async triggerSigning({ documents, signerEmail, returnUrl }) {
         if (!Array.isArray(documents) || documents.length === 0) {
             throw new Error('At least one document is required for signing');
         }
         if (!returnUrl) {
             throw new Error('returnUrl is required for signing');
         }
+        if (!signerEmail) {
+            throw new Error('signerEmail is required for signing');
+        }
 
         const dest       = await this._getDestConfig();
         const authHeader = this._basicAuth(dest.User, dest.Password);
+
+        // SecSign identifies the signer by the userId/userName, which is the
+        // local part of the email (before '@'). e.g. egleizds@extern.tuev-nord.de → egleizds
+        const signerName = String(signerEmail).split('@')[0];
 
         // ONE step, ONE signer, ONE action, N sigpos (one per document).
         // This is what makes the signer sign all documents in a single pass.
         const step = {
             action:  SIGNATURE_ACTION,
-            signers: [{ name: userName, signer_type: 'user' }],
+            signers: [{ name: signerName, signer_type: 'user' }],
             sigpos:  documents.map(doc => ({
                 docname: doc.fileName,
                 page:    SIG_POSITION.page,
@@ -83,7 +90,7 @@ class SecSignService {
         form.append('redirectmessage', REDIRECT_UX.message);
         form.append('redirecttimeout', String(REDIRECT_UX.timeoutSec));
 
-        console.log(`[SecSignService] Trigger | action: ${SIGNATURE_ACTION} | signer: ${userName} | docs: ${documents.length} (${documents.map(d => d.fileName).join(', ')})`);
+        console.log(`[SecSignService] Trigger | action: ${SIGNATURE_ACTION} | signer: ${signerName} (from ${signerEmail}) | docs: ${documents.length} (${documents.map(d => d.fileName).join(', ')})`);
 
         let response;
         try {
