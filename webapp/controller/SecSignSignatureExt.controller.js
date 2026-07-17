@@ -249,6 +249,15 @@ sap.ui.define([
                 .catch(error => {
                     console.error("[View1] Signing failed:", error.message);
                     oModel.setProperty("/attachmentsBusy", false);
+
+                    if (error.errorCode === "SIGNER_NOT_REGISTERED") {
+                        MessageBox.error(
+                            this._i18n().getText("signerNotRegistered", [error.signerName || ""]),
+                            { title: this._i18n().getText("signerNotRegisteredTitle") }
+                        );
+                        return;
+                    }
+
                     MessageBox.error(this._i18n().getText("signingFailed"), {
                         title: this._i18n().getText("signingFailedTitle"),
                         details: error.message

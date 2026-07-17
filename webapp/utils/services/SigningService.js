@@ -42,7 +42,10 @@ sap.ui.define([], () => {
                 console.log("[SigningService] Response status:", response.status);
                 if (!response.ok) {
                     return response.json().then(err => {
-                        throw new Error(err.message || `HTTP ${response.status}`);
+                        const e = new Error(err.message || `HTTP ${response.status}`);
+                        e.errorCode  = err.errorCode;
+                        e.signerName = err.signerName;
+                        throw e;
                     });
                 }
                 return response.json();

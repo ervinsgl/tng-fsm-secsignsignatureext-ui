@@ -74,6 +74,16 @@ router.post('/trigger', async (req, res) => {
 
     } catch (error) {
         console.error(`[Signing] Trigger failed:`, error.message);
+
+        if (error.code === 'SIGNER_NOT_REGISTERED') {
+            return res.status(422).json({
+                success:    false,
+                errorCode:  'SIGNER_NOT_REGISTERED',
+                signerName: error.signerName,
+                message:    error.message
+            });
+        }
+
         return res.status(500).json({ success: false, message: error.message });
     }
 });

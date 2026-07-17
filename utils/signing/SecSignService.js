@@ -102,6 +102,21 @@ class SecSignService {
         } catch (error) {
             console.error(`[SecSignService] Trigger error: ${error.response?.status} ${error.message}`);
             console.error(`[SecSignService] Error body:`, error.response?.data);
+
+            // SecSign returns 404 with "Did not find a SecSign ID nor a remote user
+            // for user name '<name>'" when the signer is not registered in the
+            // Signature Portal. Surface this as a typed error so the UI can show a
+            // meaningful, localized message instead of a generic 404.
+            const body    = error.response?.data;
+            const errMsg  = body?.errormsg || body?.errorentity || '';
+            const notReg  = error.response?.status === 404 &&
+                            /did not find a secsign id/i.test(String(errMsg));
+            if (notReg) {
+                const e = new Error(`Signer not registered in SecSign: ${signerName}`);
+                e.code       = 'SIGNER_NOT_REGISTERED';
+                e.signerName = signerName;
+                throw e;
+            }
             throw error;
         }
 
