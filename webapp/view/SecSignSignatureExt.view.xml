@@ -43,11 +43,21 @@
                 width="100%"
                 class="sapUiContentPadding">
 
+                <!-- ── Attachment load error (instead of a misleading empty table) ── -->
+                <MessageStrip
+                    id="attachmentsErrorStrip"
+                    text="{view>/attachmentsError}"
+                    type="Error"
+                    showIcon="true"
+                    visible="{= !!${view>/attachmentsError} }"
+                    class="sapUiSmallMarginBottom" />
+
                 <!-- ── Attachments table ───────────────────────────────── -->
                 <Table
                     id="attachmentsTable"
                     mode="MultiSelect"
                     items="{view>/attachments}"
+                    visible="{= !${view>/attachmentsError} }"
                     busy="{view>/attachmentsBusy}"
                     busyIndicatorDelay="0"
                     noDataText="{i18n>noAttachmentsText}"

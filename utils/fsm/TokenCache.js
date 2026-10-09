@@ -7,16 +7,21 @@
  * Key Features:
  * - Cache OAuth tokens for reuse
  * - Automatic token refresh before expiry (5 minute buffer)
+ * - Concurrent requests that find the token expired share ONE refresh
+ *   (no burst of token requests against FSM's rate-limited endpoint)
  * - Handle rate limiting errors gracefully
  *
  * Token Flow:
  * 1. Check if cached token is still valid
- * 2. If expired or missing, fetch new token from FSM
+ * 2. If expired or missing, fetch new token from FSM (or join a fetch in progress)
  * 3. Cache token with expiry timestamp
  *
  * Rate Limiting:
  * FSM may return 'too_many_requests' error if token requests are excessive.
  * Service throws descriptive error with retry-after time.
+ *
+ * Note: one cache slot — correct while FSM_OAUTH_CONNECT is the only OAuth
+ * destination using it. Key it by destination name before adding a second one.
  *
  * @file TokenCache.js
  * @module utils/TokenCache
@@ -39,6 +44,13 @@ class TokenCache {
          * @private
          */
         this.tokenExpiry = null;
+
+        /**
+         * Token request currently in progress, shared by concurrent callers.
+         * @type {Promise<string>|null}
+         * @private
+         */
+        this._inFlight = null;
     }
 
     /**
@@ -53,7 +65,14 @@ class TokenCache {
             return this.cachedToken;
         }
 
-        return this._fetchNewToken(destination);
+        // Join a refresh already in progress instead of starting another.
+        if (this._inFlight) {
+            return this._inFlight;
+        }
+
+        this._inFlight = this._fetchNewToken(destination)
+            .finally(() => { this._inFlight = null; });
+        return this._inFlight;
     }
 
     /**

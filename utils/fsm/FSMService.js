@@ -5,9 +5,10 @@
  * Scoped to the document signing app:
  *
  *   - Core HTTP helpers  (GET, PATCH via Data API; Query API)
- *   - Activity           (read + update)
+ *   - Activity           (read + update — currently unused at runtime)
  *   - UDF Meta           (resolve UDF external IDs)
- *   - Attachments        (list, content, binary buffer, create with content)
+ *   - User               (profile lookup for the header)
+ *   - Attachments        (list, binary buffer, update content, mark signed)
  *
  * @file utils/fsm/FSMService.js
  * @requires axios
@@ -174,8 +175,11 @@ class FSMService {
 
             if (!data.data || data.data.length === 0) return [];
 
-            // Per-request UDF meta cache — avoids repeat API calls for the same UUID
-            // across multiple attachments (all share the same Z_Attachment_PDFSigned UUID)
+            // Per-request UDF meta cache. All attachments carry the same
+            // Z_Attachment_PDFSigned meta UUID. The attachments are mapped in
+            // parallel, so the cache stores the PROMISE (not the resolved value):
+            // the first attachment starts the lookup and every other one awaits
+            // that same lookup — one query instead of one per attachment.
             const udfMetaCache = {};
 
             const attachments = await Promise.all(data.data.map(async item => {
@@ -187,12 +191,13 @@ class FSMService {
                     for (const udf of w.udfValues) {
                         if (!udf.meta) continue;
 
-                        // Resolve meta UUID → externalId (cached)
+                        // Resolve meta UUID → externalId (shared lookup)
                         if (!(udf.meta in udfMetaCache)) {
-                            udfMetaCache[udf.meta] = await this.getUdfMetaById(udf.meta);
+                            udfMetaCache[udf.meta] = this.getUdfMetaById(udf.meta);   // no await
                         }
+                        const externalId = await udfMetaCache[udf.meta];
 
-                        if (udfMetaCache[udf.meta] === 'Z_Attachment_PDFSigned') {
+                        if (externalId === 'Z_Attachment_PDFSigned') {
                             signed = udf.value === 'true';
                             console.log(`[FSMService] UDF Z_Attachment_PDFSigned | id: ${w.id} | value: ${udf.value} | signed: ${signed}`);
                             break;
@@ -209,28 +214,11 @@ class FSMService {
                 };
             }));
 
-            console.log(`[FSMService] Attachments loaded | objectId: ${objectId} | count: ${attachments.length}`);
+            console.log(`[FSMService] Attachments loaded | objectId: ${objectId} | count: ${attachments.length} | UDF meta lookups: ${Object.keys(udfMetaCache).length}`);
             return attachments;
 
         } catch (error) {
             console.error('[FSMService] Attachments error:', error.response?.data || error.message);
-            throw error;
-        }
-    }
-
-    async getAttachmentContent(attachmentId) {
-        try {
-            const { dest, token } = await this._auth();
-            const response = await axios.get(
-                `${dest.URL}/api/data/v4/Attachment/${attachmentId}/content`,
-                { params: this._accountParams(dest), headers: this._headers(dest, token), responseType: 'arraybuffer' }
-            );
-            const base64      = Buffer.from(response.data).toString('base64');
-            const contentType = response.headers['content-type'] || 'application/pdf';
-            console.log(`[FSMService] Attachment content | id: ${attachmentId} | size: ${response.data.byteLength} bytes`);
-            return { base64, contentType };
-        } catch (error) {
-            console.error(`[FSMService] Attachment content error for ${attachmentId}:`, error.response?.data || error.message);
             throw error;
         }
     }

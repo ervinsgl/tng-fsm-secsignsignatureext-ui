@@ -26,6 +26,7 @@ sap.ui.define([
                 attachments:       [],
                 attachmentsBusy:   false,
                 attachmentsLoaded: false,
+                attachmentsError:  "",     // non-empty → error strip shown instead of the table
                 selectedCount:     0,
                 pdfUrl:            null,
                 pdfFileName:       ""
@@ -94,7 +95,10 @@ sap.ui.define([
                 if (context.cloudId && context.cloudId !== "N/A") {
                     await this._loadAttachments(context.cloudId);
                 } else {
+                    // Launched without an Activity (e.g. Web Container wired to the
+                    // wrong object type). Say so instead of showing an empty table.
                     console.warn("[View1] No cloudId – skipping attachment load");
+                    oModel.setProperty("/attachmentsError", this._i18n().getText("openFromActivity"));
                 }
 
                 this._checkSigningReturn();
@@ -157,6 +161,12 @@ sap.ui.define([
 
         // ── Attachments ────────────────────────────────────────────────────
 
+        /**
+         * Load the attachment list. On failure, show an error strip instead of
+         * the table — a fault must never look like "No attachments found".
+         * @param {string} objectId
+         * @private
+         */
         async _loadAttachments(objectId) {
             const oModel = this.getView().getModel("view");
             oModel.setProperty("/attachmentsBusy", true);
@@ -164,11 +174,16 @@ sap.ui.define([
             try {
                 const attachments = await AttachmentService.loadAttachments(objectId);
                 oModel.setProperty("/attachments", attachments);
+                oModel.setProperty("/attachmentsError", "");
                 oModel.setProperty("/attachmentsLoaded", true);
 
             } catch (error) {
                 console.error("[View1] Attachment load failed:", error.message);
-                oModel.setProperty("/attachmentsLoaded", true);
+                oModel.setProperty("/attachments", []);
+                oModel.setProperty("/attachmentsLoaded", false);   // hides count + Sign Selected
+                oModel.setProperty("/attachmentsError", this._i18n().getText(
+                    error.status === 401 ? "attachmentsSessionExpired" : "attachmentsLoadFailed"
+                ));
 
             } finally {
                 oModel.setProperty("/attachmentsBusy", false);
@@ -283,10 +298,20 @@ sap.ui.define([
 
             if (!pending) return;
 
-            console.log("[View1] Returned from signing portal | portfolioId:", pending.portfolioId);
-
             // Clear immediately so it doesn't re-trigger on the next load.
             localStorage.removeItem(PENDING_KEY);
+
+            // A batch left over from another Activity (signing started there but
+            // never returned) does not belong to this screen — drop it silently
+            // instead of finalising it here and showing a confusing message.
+            const currentObjectId = this.getView().getModel("view").getProperty("/context/cloudId");
+            if (pending.objectId && currentObjectId && pending.objectId !== currentObjectId) {
+                console.log("[View1] Ignored pending batch of another Activity | batch:", pending.objectId,
+                    "| current:", currentObjectId);
+                return;
+            }
+
+            console.log("[View1] Returned from signing portal | portfolioId:", pending.portfolioId);
 
             const oModel = this.getView().getModel("view");
             oModel.setProperty("/attachmentsBusy", true);
@@ -321,8 +346,8 @@ sap.ui.define([
 
                     if (error.sessionExpired) {
                         // Signature succeeded on SecSign, but our session lapsed
-                        // before the FSM write-back. Guide the technician to
-                        // re-launch so the signed state can be confirmed.
+                        // before the FSM write-back. Nothing was saved to FSM;
+                        // the technician opens the app again and signs again.
                         console.warn("[View1] Finalize blocked — session expired");
                         MessageBox.warning(this._i18n().getText("sessionExpiredResign"), {
                             title: this._i18n().getText("sessionExpiredTitle")

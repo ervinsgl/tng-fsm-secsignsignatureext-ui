@@ -2,9 +2,12 @@
  * AttachmentService.js
  *
  * All attachment data operations for the signing app:
- *   - Load attachment list for an FSM object
- *   - Enrich each attachment with PDF content (preview + full base64)
+ *   - Load the attachment list for an FSM object (metadata + signed status only)
  *   - Get the backend URL for serving a single PDF (for PDFViewer)
+ *   - Finalize a signing batch after the SecSign portal returns
+ *
+ * PDF content is NOT downloaded for the list. A document is fetched only when
+ * the technician opens it in the viewer (getPdfUrl) or signs it (backend).
  *
  * @file webapp/utils/services/AttachmentService.js
  * @module com/tns/fsm/secsignsignatureext/app/utils/services/AttachmentService
@@ -15,26 +18,33 @@ sap.ui.define([], () => {
     return {
 
         /**
-         * Load all attachments for an FSM object and enrich each with PDF content.
+         * Load all attachments for an FSM object.
          * @param {string} objectId - FSM cloudId from context
-         * @returns {Promise<Array>} Enriched attachment objects:
-         *   { id, fileName, type, description, content, contentFull, contentType, signed }
+         * @returns {Promise<Array>} [{ id, fileName, type, description, signed }]
+         * @throws {Error} with error.status = HTTP status (401 = session expired),
+         *   or error.status = 0 when the request got no response at all
          */
         async loadAttachments(objectId) {
             console.log("[AttachmentService] Loading attachments | objectId:", objectId);
 
-            const response = await fetch(`/api/attachments/${encodeURIComponent(objectId)}`);
-            if (!response.ok) throw new Error(`Attachments fetch failed: HTTP ${response.status}`);
+            let response;
+            try {
+                response = await fetch(`/api/attachments/${encodeURIComponent(objectId)}`);
+            } catch (networkError) {
+                const e = new Error(`Attachments fetch failed: ${networkError.message}`);
+                e.status = 0;
+                throw e;
+            }
+
+            if (!response.ok) {
+                const e = new Error(`Attachments fetch failed: HTTP ${response.status}`);
+                e.status = response.status;
+                throw e;
+            }
 
             const attachments = await response.json();
             console.log("[AttachmentService] Received:", attachments.length, "attachment(s)");
-
-            const enriched = await Promise.all(
-                attachments.map(att => this._fetchContent(att))
-            );
-
-            console.log("[AttachmentService] Enriched:", enriched.length, "attachment(s)");
-            return enriched;
+            return attachments;
         },
 
         /**
@@ -88,42 +98,6 @@ sap.ui.define([], () => {
             console.log("[AttachmentService] finalizeSigned result | signed:", result.signed,
                 "| count:", result.signedAttachmentIds?.length);
             return result;
-        },
-
-        // ── Private ───────────────────────────────────────────────────────
-
-        /**
-         * Fetch PDF binary content for a single attachment.
-         * Returns the attachment extended with content fields.
-         * Never throws — returns safe fallback values on error.
-         * @private
-         */
-        async _fetchContent(attachment) {
-            try {
-                const response = await fetch(`/api/attachment-content/${encodeURIComponent(attachment.id)}`);
-
-                if (!response.ok) {
-                    console.warn(`[AttachmentService] Content fetch failed for ${attachment.id}: HTTP ${response.status}`);
-                    return { ...attachment, content: "N/A", contentFull: null, contentType: "application/pdf" };
-                }
-
-                const result  = await response.json();
-                const preview = result.base64 ? result.base64.substring(0, 60) + "..." : "N/A";
-
-                console.log(`[AttachmentService] Content fetched | id: ${attachment.id} | size: ${result.base64?.length} chars`);
-
-                return {
-                    ...attachment,
-                    content:     preview,
-                    contentFull: result.base64,
-                    contentType: result.contentType || "application/pdf"
-                    // signed + description preserved from attachment (set by FSMService)
-                };
-
-            } catch (error) {
-                console.error(`[AttachmentService] Content error for ${attachment.id}:`, error.message);
-                return { ...attachment, content: "Error", contentFull: null, contentType: "application/pdf" };
-            }
         }
     };
 });

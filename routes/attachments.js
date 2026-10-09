@@ -5,7 +5,6 @@
  *
  * Routes (mounted at /api):
  *   GET  /api/attachments/:objectId       ← list attachments for an FSM object
- *   GET  /api/attachment-content/:id      ← fetch base64 + contentType
  *   GET  /api/attachment-pdf/:id          ← pipe raw PDF binary (for PDFViewer)
  *   POST /api/attachments/finalize-signed ← confirm completion, then update signed docs
  */
@@ -42,24 +41,6 @@ router.get('/attachments/:objectId', async (req, res) => {
 });
 
 /**
- * GET /api/attachment-content/:attachmentId
- * Returns { base64, contentType } for a single attachment.
- */
-router.get('/attachment-content/:attachmentId', async (req, res) => {
-    const { attachmentId } = req.params;
-
-    try {
-        console.log(`[Attachments] GET content | id: ${attachmentId}`);
-        const result = await FSMService.getAttachmentContent(attachmentId);
-        console.log(`[Attachments] Content fetched | type: ${result.contentType}`);
-        return res.json(result);
-    } catch (error) {
-        console.error(`[Attachments] Content error:`, error.message);
-        return res.status(500).json({ message: 'Failed to fetch attachment content', error: error.message });
-    }
-});
-
-/**
  * GET /api/attachment-pdf/:attachmentId
  * Pipes raw PDF binary directly to the browser.
  * Used as PDFViewer source – avoids Blob URL iframe security issues.
@@ -88,8 +69,10 @@ router.get('/attachment-pdf/:attachmentId', async (req, res) => {
  *   1. Poll SecSign until the portfolio reaches the finished state (3).
  *      If it never finishes (user went back / declined) → nothing is changed.
  *   2. Download the signed portfolio (a ZIP for multi-doc; PDF for single).
- *   3. Split the ZIP and map each signed PDF back to its FSM attachment.
- *   4. For each matched attachment: overwrite content + set Z_Attachment_PDFSigned.
+ *   3. Map every requested document to exactly one signed PDF by name.
+ *      If any document cannot be matched unambiguously → nothing is changed
+ *      (SIGNED_MAPPING_FAILED). FSM is only written after ALL documents match.
+ *   4. For each mapped attachment: overwrite content + set Z_Attachment_PDFSigned.
  *
  * Body:    { portfolioId, documents: [{ attachmentId, fileName }] }
  * Returns: { signed: boolean, signedAttachmentIds: [...], state }
@@ -101,7 +84,7 @@ router.post('/attachments/finalize-signed', async (req, res) => {
         return res.status(400).json({ message: 'portfolioId and documents[] are required' });
     }
 
-    console.log(`[Attachments] POST finalize-signed | portfolioId: ${portfolioId} | docs: ${documents.length}`);
+    console.log(`[Attachments] POST finalize-signed | portfolioId: ${portfolioId} | docs: ${documents.length} (${documents.map(d => d.fileName).join(', ')})`);
 
     try {
         // 1. Confirm the portfolio actually finished before touching anything.
@@ -119,10 +102,11 @@ router.post('/attachments/finalize-signed', async (req, res) => {
         // 2. Download the signed portfolio.
         const { buffer, contentType } = await SecSignService.downloadSigned(portfolioId);
 
-        // 3. Split + map signed PDFs back to attachments.
+        // 3. Extract + map. Throws SIGNED_MAPPING_FAILED before any FSM write
+        //    if a single document cannot be matched unambiguously.
         const signedPdfs = ZipExtractor.extractSignedPdfs(buffer, contentType);
         const mapped     = ZipExtractor.mapToAttachments(signedPdfs, documents);
-        console.log(`[Attachments] Extracted ${signedPdfs.length} signed PDF(s), mapped ${mapped.length} to attachments`);
+        console.log(`[Attachments] Extracted ${signedPdfs.length} PDF(s), mapped ${mapped.length}/${documents.length} to attachments`);
 
         // 4. Update each attachment content + mark signed via UDF.
         const signedAttachmentIds = [];
@@ -140,6 +124,20 @@ router.post('/attachments/finalize-signed', async (req, res) => {
         });
 
     } catch (error) {
+        if (error.code === ZipExtractor.MAPPING_FAILED) {
+            // Signature exists on SecSign, but we could not tell which signed PDF
+            // belongs to which attachment. Nothing was written to FSM.
+            console.error(`[Attachments] finalize-signed MAPPING FAILED | portfolioId: ${portfolioId} | ${error.message}` +
+                ` | missing: [${(error.missing || []).join(', ')}]` +
+                ` | ambiguous: [${(error.ambiguous || []).join(', ')}]` +
+                ` | available: [${(error.available || []).join(', ')}]` +
+                ` | no attachments were changed`);
+            return res.status(500).json({
+                errorCode: ZipExtractor.MAPPING_FAILED,
+                message:   'The signed documents could not be matched to the attachments. No attachments were changed.'
+            });
+        }
+
         console.error(`[Attachments] finalize-signed failed:`, error.message);
         return res.status(500).json({ message: 'Failed to finalize signed documents', error: error.message });
     }

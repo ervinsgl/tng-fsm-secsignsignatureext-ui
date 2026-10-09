@@ -2,20 +2,36 @@
  * DestinationService.js
  *
  * SAP BTP Destination Service integration.
- * Fetches destination configuration and auth tokens from BTP.
+ * Fetches destination configuration from BTP.
  *
- * Two methods:
- *   getDestination(name)          – returns full destination config (existing behaviour)
- *   getDestinationToken(name)     – returns BTP-issued authToken for the destination
- *                                   (for NoAuthentication destinations where we need
- *                                    to attach our own auth header + route via BTP proxy)
+ * Caching: a destination is static configuration (it changes only when a BTP
+ * administrator edits it), but resolving it costs two outbound HTTPS calls
+ * (BTP OAuth token + destination lookup). Every FSM and SecSign call needs one,
+ * so resolved destinations are cached per destination name for
+ * DESTINATION_CACHE_TTL_MS. Concurrent callers share one in-flight lookup.
+ * A failed lookup is never cached.
+ *
+ * Consequence: a change to a destination in the BTP cockpit (e.g. a rotated
+ * SecSign password) is picked up within DESTINATION_CACHE_TTL_MS, or
+ * immediately after an app restart.
+ *
+ * Methods:
+ *   getDestination(name)   – returns full destination config (cached)
+ *   getConnectivityProxy() – connectivity proxy details (currently unused)
  *
  * @file utils/fsm/DestinationService.js
  * @requires axios
  */
 const axios = require('axios');
 
+const DESTINATION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 class DestinationService {
+
+    constructor() {
+        /** Map<destinationName, { promise: Promise<Object>, expiresAt: number }> */
+        this._cache = new Map();
+    }
 
     /**
      * Get Destination Service credentials from VCAP_SERVICES.
@@ -33,28 +49,30 @@ class DestinationService {
     }
 
     /**
-     * Get destination configuration from BTP.
+     * Get destination configuration from BTP (cached per name).
      * Returns destinationConfiguration + authTokens if available.
+     * Callers must treat the returned object as read-only — it is shared.
      *
      * @param {string} destinationName
      * @returns {Promise<Object>}
      */
     async getDestination(destinationName) {
-        try {
-            const { accessToken, credentials } = await this._getBtpToken();
-
-            const destinationResponse = await axios.get(
-                `${credentials.uri}/destination-configuration/v1/destinations/${destinationName}`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-
-            console.log(`[DestinationService] Loaded: ${destinationName}`);
-            return destinationResponse.data;
-
-        } catch (error) {
-            console.error(`[DestinationService] Error loading ${destinationName}:`, error.response?.data || error.message);
-            throw new Error(`Failed to load destination: ${destinationName}`);
+        const hit = this._cache.get(destinationName);
+        if (hit && Date.now() < hit.expiresAt) {
+            return hit.promise;
         }
+
+        const promise = this._fetchDestination(destinationName);
+        this._cache.set(destinationName, { promise, expiresAt: Date.now() + DESTINATION_CACHE_TTL_MS });
+
+        // Never keep a failure: the next call retries.
+        promise.catch(() => {
+            if (this._cache.get(destinationName)?.promise === promise) {
+                this._cache.delete(destinationName);
+            }
+        });
+
+        return promise;
     }
 
     /**
@@ -102,6 +120,25 @@ class DestinationService {
     }
 
     // ── Private ──────────────────────────────────────────────────────────────
+
+    /** Uncached lookup: BTP token + destination configuration. */
+    async _fetchDestination(destinationName) {
+        try {
+            const { accessToken, credentials } = await this._getBtpToken();
+
+            const destinationResponse = await axios.get(
+                `${credentials.uri}/destination-configuration/v1/destinations/${destinationName}`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+
+            console.log(`[DestinationService] Loaded: ${destinationName} (cached for ${DESTINATION_CACHE_TTL_MS / 60000} min)`);
+            return destinationResponse.data;
+
+        } catch (error) {
+            console.error(`[DestinationService] Error loading ${destinationName}:`, error.response?.data || error.message);
+            throw new Error(`Failed to load destination: ${destinationName}`);
+        }
+    }
 
     async _getBtpToken() {
         const credentials = this.getCredentials();

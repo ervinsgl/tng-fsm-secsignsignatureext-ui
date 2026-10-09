@@ -8,8 +8,13 @@
  * Inbound auth (mobile):
  *   - Entry POST validates the FSM Authentication Key (Tier 1).
  *   - On success, an HttpOnly session cookie is issued (Tier 3).
- *   - /web-container-context requires that cookie.
+ *   - /web-container-context requires that cookie, and only returns the
+ *     context the cookie's session is bound to.
  * See SECURITY.md.
+ *
+ * The Authentication Key is a shared secret. It is validated on entry and
+ * then discarded — it is never stored and never returned to the browser.
+ * The FSM user token (authToken) in the same POST is discarded too.
  *
  * Routes:
  *   POST /web-container-access-point  ← FSM Mobile entry point
@@ -26,15 +31,24 @@ const requireSession = require('../utils/auth/requireSession');
 // ── Session storage ────────────────────────────────────────────────────────
 
 /**
- * Map of sessionKey → { ...fsmContext, _timestamp }
+ * Map of sessionKey → { ...fsmContext (without authenticationKey / authToken), _timestamp }
  * Key format: "<userName>-<cloudId>"
  */
 const sessions       = {};
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-/** Remove sessions older than SESSION_TTL_MS. Runs every 10 minutes. */
+/**
+ * How long a launch context is kept after entry.
+ * Deliberately much longer than the 60-minute sliding session in SessionStore:
+ * access is controlled by the session cookie, so the context only has to
+ * outlive it. With 60 minutes here, a technician active for more than an hour
+ * kept a valid session but lost the context, and the page failed on reload
+ * (e.g. on return from SecSign). Contexts are tiny; 12 hours costs nothing.
+ */
+const CONTEXT_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+/** Remove contexts older than CONTEXT_TTL_MS. Runs every 10 minutes. */
 setInterval(() => {
-    const cutoff  = Date.now() - SESSION_TTL_MS;
+    const cutoff  = Date.now() - CONTEXT_TTL_MS;
     let   removed = 0;
     Object.keys(sessions).forEach(key => {
         if (sessions[key]._timestamp < cutoff) {
@@ -60,7 +74,15 @@ function handleMobilePost(body, res) {
     const cloudId  = body?.cloudId  || 'unknown';
     const key      = `${userName}-${cloudId}`;
 
-    sessions[key] = { ...body, _timestamp: Date.now() };
+    // Never persist credentials from the entry POST; storing them would return
+    // them to the browser via GET /web-container-context:
+    //   - authenticationKey: the shared Web Container secret (validated above)
+    //   - authToken:         the technician's own FSM user token (JWT) that FSM
+    //                        Mobile includes. The backend calls FSM with its own
+    //                        OAuth client (FSM_OAUTH_CONNECT) and never uses it.
+    // eslint-disable-next-line no-unused-vars
+    const { authenticationKey, authToken, ...contextData } = body;
+    sessions[key] = { ...contextData, _timestamp: Date.now() };
 
     console.log(`[Context] Web container opened | user: ${userName} | objectType: ${body?.objectType} | session: ${key}`);
 
@@ -92,13 +114,20 @@ router.post('/', (req, res) => {
 /**
  * GET /web-container-context?session=<key>
  * Frontend calls this on load to retrieve its stored context.
- * Protected: requires the session cookie issued on entry.
+ * Protected: requires the session cookie issued on entry, and the requested
+ * key must be the one that cookie's session is bound to — a caller can only
+ * read their own launch context.
  */
 router.get('/web-container-context', requireSession, (req, res) => {
     const key = req.query.session;
 
     if (!key) {
         return res.status(404).json({ message: 'No session key provided. Open from FSM Mobile.' });
+    }
+
+    if (key !== req.sessionContextKey) {
+        console.warn(`[Context] GET context: rejected — requested '${key}' does not match session '${req.sessionContextKey}'`);
+        return res.status(403).json({ message: 'Forbidden' });
     }
 
     const context = sessions[key];

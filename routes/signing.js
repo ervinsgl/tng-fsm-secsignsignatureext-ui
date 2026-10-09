@@ -9,15 +9,19 @@
 const express        = require('express');
 const FSMService     = require('../utils/fsm/FSMService');
 const SecSignService = require('../utils/signing/SecSignService');
+const ZipExtractor   = require('../utils/signing/SignedZipExtractor');
 
 const router = express.Router();
 
 /**
  * POST /api/signing/trigger
  *
- * 1. Fetches the PDF binary for each requested attachment from FSM
- * 2. Starts ONE SecSign workflow containing all documents (single step, N sigpos)
- * 3. Returns workflowstepurl for browser navigation to the signing portal
+ * 1. Rejects batches containing two documents with the same file name —
+ *    SecSign references documents by name, so they could not be mapped back
+ *    to their attachments after signing.
+ * 2. Fetches the PDF binary for each requested attachment from FSM
+ * 3. Starts ONE SecSign workflow containing all documents (single step, N sigpos)
+ * 4. Returns workflowstepurl for browser navigation to the signing portal
  *
  * Body: { documents: [{ attachmentId, fileName }], signerEmail, returnUrl }
  * (A single-document sign is just a one-element documents array.)
@@ -33,6 +37,16 @@ router.post('/trigger', async (req, res) => {
     }
     if (!signerEmail) {
         return res.status(400).json({ success: false, message: 'signerEmail is required' });
+    }
+
+    const duplicates = ZipExtractor.findDuplicateNames(documents);
+    if (duplicates.length > 0) {
+        console.warn(`[Signing] Trigger rejected — duplicate file names in batch: ${duplicates.join(', ')}`);
+        return res.status(400).json({
+            success:   false,
+            errorCode: 'DUPLICATE_FILENAMES',
+            message:   `Several selected documents have the same file name (${duplicates.join(', ')}). Please sign them one at a time.`
+        });
     }
 
     console.log(`[Signing] POST trigger | docs: ${documents.length} | signer: ${signerEmail}`);
